@@ -77,7 +77,7 @@ void TCPServer::start_accept() {
 }
 
 void TCPServer::start_read(std::shared_ptr<tcp::socket> socket, std::string id) {
-    auto buffer = std::make_shared<std::vector<char>>(1024);
+    auto buffer = std::make_shared<std::vector<char>>(1048576);
     socket->async_read_some(boost::asio::buffer(*buffer), [this, socket, buffer, id](const boost::system::error_code& error, std::size_t bytes_transferred) {
         if (!error) {
             if (manager_->isConnected()) {

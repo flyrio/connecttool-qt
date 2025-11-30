@@ -26,7 +26,7 @@ std::string MultiplexManager::addClient(std::shared_ptr<tcp::socket> socket)
         std::lock_guard<std::mutex> lock(mapMutex_);
         id = nanoid::generate(6);
         clientMap_[id] = socket;
-        readBuffers_[id].resize(1024);
+        readBuffers_[id].resize(1048576);
     }
     startAsyncRead(id);
     std::cout << "Added client with id " << id << std::endl;
@@ -105,7 +105,7 @@ void MultiplexManager::handleTunnelPacket(const char *data, size_t len)
                 {
                     std::lock_guard<std::mutex> lock(mapMutex_);
                     clientMap_[id] = newSocket;
-                    readBuffers_[id].resize(1024);
+                    readBuffers_[id].resize(1048576);
                     socket = newSocket;
                 }
                 std::cout << "Successfully created TCP client for id " << id << std::endl;
