@@ -1,7 +1,9 @@
 #pragma once
+#include <functional>
 #include <iostream>
 #include <mutex>
 #include <steam_api.h>
+#include <string>
 #include <vector>
 
 class SteamNetworkingManager; // Forward declaration
@@ -44,6 +46,15 @@ private:
 
 class SteamRoomManager {
 public:
+  struct LobbyInfo {
+    CSteamID id;
+    CSteamID ownerId;
+    std::string name;
+    std::string ownerName;
+    int memberCount = 0;
+    int pingMs = -1;
+  };
+
   SteamRoomManager(SteamNetworkingManager *networkingManager);
   ~SteamRoomManager();
 
@@ -53,9 +64,15 @@ public:
   bool joinLobby(CSteamID lobbyID);
   bool startHosting();
   void stopHosting();
+  void setLobbyName(const std::string &name);
+  void setPublishLobby(bool publish);
+  std::string getLobbyName() const;
+  void setLobbyListCallback(
+      std::function<void(const std::vector<LobbyInfo> &)> callback);
 
   CSteamID getCurrentLobby() const { return currentLobby; }
   const std::vector<CSteamID> &getLobbies() const { return lobbies; }
+  const std::vector<LobbyInfo> &getLobbyInfos() const { return lobbyInfos; }
   std::vector<CSteamID> getLobbyMembers() const;
 
   void setCurrentLobby(CSteamID lobby) { currentLobby = lobby; }
@@ -63,9 +80,19 @@ public:
   void clearLobbies() { lobbies.clear(); }
 
 private:
+  friend class SteamMatchmakingCallbacks;
+  friend class SteamFriendsCallbacks;
+  friend class Backend;
+  void refreshLobbyMetadata();
+  void notifyLobbyListUpdated();
+
   SteamNetworkingManager *networkingManager_;
   CSteamID currentLobby;
   std::vector<CSteamID> lobbies;
+  std::vector<LobbyInfo> lobbyInfos;
   SteamFriendsCallbacks *steamFriendsCallbacks;
   SteamMatchmakingCallbacks *steamMatchmakingCallbacks;
+  std::function<void(const std::vector<LobbyInfo> &)> lobbyListCallback_;
+  std::string lobbyName_;
+  bool publishLobby_ = true;
 };

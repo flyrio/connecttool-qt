@@ -22,8 +22,8 @@ ApplicationWindow {
     property string copyHint: ""
     property string currentPage: "room"
     property var navItems: [
-        { key: "room", title: qsTr("房间"), subtitle: qsTr("当前页面") },
-        { key: "lobby", title: qsTr("大厅"), subtitle: qsTr("空界面") },
+        { key: "room", title: qsTr("房间"), subtitle: qsTr("主持或加入到房间") },
+        { key: "lobby", title: qsTr("大厅"), subtitle: qsTr("浏览房间列表") },
         { key: "about", title: qsTr("关于"), subtitle: qsTr("关于 ConnectTool") }
     ]
 
@@ -248,19 +248,38 @@ ApplicationWindow {
                                 selectByMouse: true
                             }
 
-                    Switch {
-                        text: qsTr("启动")
-                        checked: backend.isHost || backend.isConnected
-                        Layout.alignment: Qt.AlignVCenter
-                        onToggled: {
-                            if (checked && !backend.isConnected && !backend.isHost) {
-                                backend.joinHost()
-                            } else if (!checked && (backend.isConnected || backend.isHost)) {
-                                backend.disconnect()
+                            Switch {
+                                text: qsTr("启动")
+                                checked: backend.isHost || backend.isConnected
+                                Layout.alignment: Qt.AlignVCenter
+                                onToggled: {
+                                    if (checked && !backend.isConnected && !backend.isHost) {
+                                        backend.joinHost()
+                                    } else if (!checked && (backend.isConnected || backend.isHost)) {
+                                        backend.disconnect()
+                                    }
+                                }
+                            }
+
+                            Switch {
+                                id: publishSwitch
+                                text: qsTr("公开到大厅")
+                                checked: backend.publishLobby
+                                Layout.alignment: Qt.AlignVCenter
+                                onToggled: backend.publishLobby = checked
                             }
                         }
-                    }
-                }
+
+                        TextField {
+                            id: roomNameField
+                            Layout.fillWidth: true
+                            placeholderText: qsTr("房间名（主持时展示在大厅列表中）")
+                            text: backend.roomName
+                            onTextChanged: backend.roomName = text
+                            color: "#dce7ff"
+                            selectByMouse: true
+                            visible: publishSwitch.checked
+                        }
 
                         RowLayout {
                             Layout.fillWidth: true
@@ -268,6 +287,7 @@ ApplicationWindow {
 
                             Repeater {
                                 model: [
+                                    { title: qsTr("房间名"), value: backend.lobbyName, accent: "#7fded1" },
                                     { title: qsTr("房间 ID"), value: backend.lobbyId, accent: "#23c9a9" },
                                     { title: qsTr("连接 IP"), value: backend.localBindPort > 0 ? qsTr("localhost:%1").arg(backend.localBindPort) : "", accent: "#2ad2ff" }
                                 ]
@@ -714,27 +734,198 @@ ApplicationWindow {
             Layout.fillHeight: true
             visible: win.currentPage === "lobby"
 
-            Frame {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                padding: 20
-                Material.elevation: 6
-                background: Rectangle { radius: 12; color: "#111827"; border.color: "#1f2b3c" }
+            onVisibleChanged: {
+                if (visible) {
+                    backend.refreshLobbies()
+                }
+            }
 
-                Column {
-                    anchors.centerIn: parent
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: 14
+
+                RowLayout {
+                    Layout.fillWidth: true
                     spacing: 10
                     Label {
                         text: qsTr("大厅")
                         font.pixelSize: 20
                         color: "#e6efff"
                     }
+                    Rectangle { Layout.fillWidth: true; color: "transparent" }
                     Label {
-                        text: qsTr("这里暂时是空界面，敬请期待。")
+                        text: qsTr("房间数: %1").arg(backend.lobbiesModel ? backend.lobbiesModel.count : 0)
                         color: "#7f8cab"
-                        font.pixelSize: 14
-                        wrapMode: Text.Wrap
-                        horizontalAlignment: Text.AlignHCenter
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+                    BusyIndicator {
+                        running: backend.lobbyRefreshing
+                        visible: running
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+                    Button {
+                        text: backend.lobbyRefreshing ? qsTr("刷新中…") : qsTr("刷新")
+                        enabled: backend.steamReady && !backend.lobbyRefreshing
+                        Layout.alignment: Qt.AlignVCenter
+                        onClicked: backend.refreshLobbies()
+                    }
+                }
+
+                Frame {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    padding: 16
+                    Material.elevation: 6
+                    background: Rectangle { radius: 12; color: "#111827"; border.color: "#1f2b3c" }
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 10
+
+                        Label {
+                            text: qsTr("浏览当前可见的房间，点击加入或复制房间 ID。")
+                            color: "#8ea4c8"
+                            font.pixelSize: 13
+                        }
+
+                        Item {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+
+                            ListView {
+                                id: lobbyList
+                                anchors.fill: parent
+                                anchors.margins: 4
+                                clip: true
+                                spacing: 10
+                                model: backend.lobbiesModel
+                                ScrollBar.vertical: ScrollBar {}
+
+                                delegate: Rectangle {
+                                    width: lobbyList.width
+                                    required property string lobbyId
+                                    required property string name
+                                    required property string hostName
+                                    required property string hostId
+                                    required property int members
+                                    required property var ping
+                                    property bool isCurrentLobby: backend.lobbyId && backend.lobbyId === lobbyId
+                                    property bool canJoin: backend.steamReady && !backend.isHost && !backend.isConnected && !isCurrentLobby
+                                    radius: 10
+                                    color: "#162033"
+                                    border.color: "#1f2f45"
+                                    height: implicitHeight
+                                    implicitHeight: row.implicitHeight + 16
+
+                                    RowLayout {
+                                        id: row
+                                        anchors.fill: parent
+                                        anchors.margins: 10
+                                        spacing: 10
+
+                                        ColumnLayout {
+                                            spacing: 4
+                                            Layout.fillWidth: true
+
+                                            RowLayout {
+                                                spacing: 8
+                                                Layout.fillWidth: true
+                                                Label {
+                                                    text: name.length > 0 ? name : qsTr("未命名房间")
+                                                    font.pixelSize: 16
+                                                    color: "#e1edff"
+                                                    elide: Text.ElideRight
+                                                    Layout.fillWidth: true
+                                                }
+                                                Rectangle {
+                                                    visible: isCurrentLobby && backend.isHost
+                                                    radius: 8
+                                                    color: "#142033"
+                                                    border.color: "#23c9a9"
+                                                    implicitHeight: 22
+                                                    implicitWidth: badgeText.implicitWidth + 14
+                                                    Label {
+                                                        id: badgeText
+                                                        anchors.centerIn: parent
+                                                        text: qsTr("你正在主持")
+                                                        color: "#23c9a9"
+                                                        font.pixelSize: 11
+                                                    }
+                                                }
+                                                Rectangle {
+                                                    visible: isCurrentLobby && backend.isConnected && !backend.isHost
+                                                    radius: 8
+                                                    color: "#142033"
+                                                    border.color: "#2ad2ff"
+                                                    implicitHeight: 22
+                                                    implicitWidth: joinedText.implicitWidth + 14
+                                                    Label {
+                                                        id: joinedText
+                                                        anchors.centerIn: parent
+                                                        text: qsTr("已加入此房间")
+                                                        color: "#2ad2ff"
+                                                        font.pixelSize: 11
+                                                    }
+                                                }
+                                            }
+
+        RowLayout {
+                                                spacing: 6
+                                                Layout.fillWidth: true
+                                                Label {
+                                                    text: qsTr("房主: %1").arg(hostName.length > 0 ? hostName : hostId)
+                                                    color: "#8ea4c8"
+                                                    font.pixelSize: 12
+                                                    elide: Text.ElideRight
+                                                    Layout.fillWidth: true
+                                                }
+                                                Label {
+                                                    text: qsTr("房间 ID: %1").arg(lobbyId)
+                                                    color: "#7f8cab"
+                                                    font.pixelSize: 12
+                                                }
+                                            }
+                                        }
+
+                                        RowLayout {
+                                            spacing: 10
+                                            Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
+                                            Layout.preferredWidth: 320
+                                            Layout.minimumWidth: 260
+                                            Layout.maximumWidth: 360
+                                            Item { Layout.fillWidth: true }
+                                            Label {
+                                                text: qsTr("共有 %1 人").arg(members)
+                                                color: "#dce7ff"
+                                                font.pixelSize: 13
+                                                horizontalAlignment: Text.AlignRight
+                                                Layout.alignment: Qt.AlignVCenter
+                                            }
+                                            Button {
+                                                text: isCurrentLobby ? qsTr("已在此房间") : qsTr("加入")
+                                                Layout.alignment: Qt.AlignVCenter
+                                                enabled: canJoin
+                                                onClicked: backend.joinLobby(lobbyId)
+                                            }
+                                            Button {
+                                                text: qsTr("复制 ID")
+                                                flat: true
+                                                Layout.alignment: Qt.AlignVCenter
+                                                onClicked: win.copyBadge(qsTr("房间 ID"), lobbyId)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Column {
+                                anchors.centerIn: parent
+                                spacing: 6
+                                visible: !backend.lobbyRefreshing && lobbyList.count === 0
+                                Label { text: qsTr("暂无大厅数据"); color: "#8090b3" }
+                                Label { text: qsTr("点击右上角刷新获取房间列表。"); color: "#62708f"; font.pixelSize: 12 }
+                            }
+                        }
                     }
                 }
             }

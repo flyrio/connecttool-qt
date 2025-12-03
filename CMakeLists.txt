@@ -70,6 +70,7 @@ endif()
 add_executable(connecttool-qt
     src/main.cpp
     src/backend.cpp
+    src/lobbies_model.cpp
     src/friends_model.cpp
     src/members_model.cpp
     net/multiplex_manager.cpp

@@ -45,11 +45,26 @@ PersonaDisplay personaStateDisplay(EPersonaState state) {
     return {QCoreApplication::translate("Backend", "离线"), false, 8};
   }
 }
+
+QString defaultRoomName() {
+  QString persona;
+  if (SteamFriends()) {
+    const char *name = SteamFriends()->GetPersonaName();
+    if (name && name[0] != '\0') {
+      persona = QString::fromUtf8(name);
+    }
+  }
+  if (!persona.isEmpty()) {
+    return QCoreApplication::translate("Backend", "%1 的房间").arg(persona);
+  }
+  return QCoreApplication::translate("Backend", "ConnectTool 房间");
+}
 } // namespace
 
 Backend::Backend(QObject *parent)
     : QObject(parent), steamReady_(false), localPort_(25565),
-      localBindPort_(8888), lastTcpClients_(0), lastMemberLogCount_(-1) {
+      localBindPort_(8888), lastTcpClients_(0), lastMemberLogCount_(-1),
+      roomName_(QCoreApplication::translate("Backend", "ConnectTool 房间")) {
   // Set a default app id so Steam can bootstrap in development environments
   qputenv("SteamAppId", QByteArray("480"));
   qputenv("SteamGameId", QByteArray("480"));
@@ -59,6 +74,8 @@ Backend::Backend(QObject *parent)
     status_ = tr("无法初始化 Steam API，请确认客户端已登录。");
     return;
   }
+  roomName_ = defaultRoomName();
+  emit roomNameChanged();
 
   steamManager_ = std::make_unique<SteamNetworkingManager>();
   if (!steamManager_->initialize()) {
@@ -68,6 +85,18 @@ Backend::Backend(QObject *parent)
   }
 
   roomManager_ = std::make_unique<SteamRoomManager>(steamManager_.get());
+  roomManager_->setLobbyName(roomName_.toStdString());
+  roomManager_->setPublishLobby(publishLobby_);
+  roomManager_->setLobbyListCallback(
+      [this](const std::vector<SteamRoomManager::LobbyInfo> &lobbies) {
+        QMetaObject::invokeMethod(
+            this,
+            [this, lobbies]() {
+              updateLobbiesList(lobbies);
+              setLobbyRefreshing(false);
+            },
+            Qt::QueuedConnection);
+      });
 
   workGuard_ = std::make_unique<
       boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
@@ -166,6 +195,29 @@ QString Backend::lobbyId() const {
   return lobby.IsValid() ? QString::number(lobby.ConvertToUint64()) : QString();
 }
 
+QString Backend::lobbyName() const {
+  if (!steamReady_ || !roomManager_ || !SteamMatchmaking()) {
+    return {};
+  }
+
+  const std::string name = roomManager_->getLobbyName();
+  if (!name.empty()) {
+    return QString::fromUtf8(name.c_str());
+  }
+
+  CSteamID lobby = roomManager_->getCurrentLobby();
+  if (lobby.IsValid()) {
+    CSteamID owner = SteamMatchmaking()->GetLobbyOwner(lobby);
+    if (owner.IsValid() && SteamFriends()) {
+      const char *ownerName = SteamFriends()->GetFriendPersonaName(owner);
+      if (ownerName) {
+        return QString::fromUtf8(ownerName);
+      }
+    }
+  }
+  return {};
+}
+
 int Backend::tcpClients() const {
   return server_ ? server_->getClientCount() : 0;
 }
@@ -176,6 +228,18 @@ void Backend::setJoinTarget(const QString &id) {
   }
   joinTarget_ = id;
   emit joinTargetChanged();
+}
+
+void Backend::setPublishLobby(bool publish) {
+  if (publishLobby_ == publish) {
+    return;
+  }
+  publishLobby_ = publish;
+  emit publishLobbyChanged();
+  if (roomManager_) {
+    roomManager_->setPublishLobby(publishLobby_);
+    roomManager_->refreshLobbyMetadata();
+  }
 }
 
 void Backend::setLocalPort(int port) {
@@ -292,6 +356,39 @@ void Backend::joinHost() {
   }
 }
 
+void Backend::joinLobby(const QString &lobbyId) {
+  if (!ensureSteamReady(tr("加入大厅"))) {
+    return;
+  }
+  if (isHost() || isConnected()) {
+    emit errorMessage(tr("当前已在房间中，请先断开。"));
+    return;
+  }
+
+  bool ok = false;
+  const uint64 idValue = lobbyId.trimmed().toULongLong(&ok);
+  if (!ok) {
+    emit errorMessage(tr("无效的房间 ID。"));
+    return;
+  }
+
+  CSteamID lobby(idValue);
+  if (!lobby.IsValid() || !lobby.IsLobby()) {
+    emit errorMessage(tr("请输入有效的房间 ID。"));
+    return;
+  }
+
+  if (roomManager_ && roomManager_->joinLobby(lobby)) {
+    if (joinTarget_ != lobbyId) {
+      joinTarget_ = lobbyId;
+      emit joinTargetChanged();
+    }
+    updateStatus();
+  } else {
+    emit errorMessage(tr("无法加入房间。"));
+  }
+}
+
 void Backend::disconnect() {
   if (roomManager_) {
     roomManager_->leaveLobby();
@@ -307,6 +404,8 @@ void Backend::disconnect() {
   }
   updateMembersList();
   updateStatus();
+  updateLobbyInfoSignals();
+  setLobbyRefreshing(false);
 }
 
 void Backend::refreshFriends() {
@@ -346,6 +445,18 @@ void Backend::refreshFriends() {
   }
 }
 
+void Backend::refreshLobbies() {
+  if (!ensureSteamReady(tr("刷新大厅列表"))) {
+    return;
+  }
+  if (roomManager_ && roomManager_->searchLobbies()) {
+    setLobbyRefreshing(true);
+  } else {
+    emit errorMessage(tr("无法请求大厅列表。"));
+    setLobbyRefreshing(false);
+  }
+}
+
 void Backend::setFriendFilter(const QString &text) {
   if (friendFilter_ == text) {
     return;
@@ -353,6 +464,24 @@ void Backend::setFriendFilter(const QString &text) {
   friendFilter_ = text;
   friendsModel_.setFilter(friendFilter_);
   emit friendFilterChanged();
+}
+
+void Backend::setRoomName(const QString &name) {
+  QString next = name;
+  next = next.left(64).trimmed();
+  if (next.isEmpty()) {
+    next = defaultRoomName();
+  }
+  if (roomName_ == next) {
+    return;
+  }
+  roomName_ = next;
+  emit roomNameChanged();
+  emit stateChanged();
+  if (roomManager_) {
+    roomManager_->setLobbyName(roomName_.toStdString());
+    roomManager_->refreshLobbyMetadata();
+  }
 }
 
 void Backend::refreshMembers() { updateMembersList(); }
@@ -404,6 +533,14 @@ void Backend::updateFriendCooldown(const QString &steamId, int seconds) {
   }
 }
 
+void Backend::setLobbyRefreshing(bool refreshing) {
+  if (lobbyRefreshing_ == refreshing) {
+    return;
+  }
+  lobbyRefreshing_ = refreshing;
+  emit lobbyRefreshingChanged();
+}
+
 void Backend::copyToClipboard(const QString &text) {
   if (text.isEmpty()) {
     return;
@@ -425,6 +562,7 @@ void Backend::tick() {
   refreshHostId();
   updateMembersList();
   updateStatus();
+  updateLobbyInfoSignals();
 }
 
 void Backend::updateStatus() {
@@ -455,6 +593,39 @@ void Backend::updateStatus() {
     status_ = next;
     emit stateChanged();
   }
+}
+
+void Backend::updateLobbiesList(
+    const std::vector<SteamRoomManager::LobbyInfo> &lobbies) {
+  std::vector<LobbiesModel::Entry> entries;
+  entries.reserve(lobbies.size());
+
+  for (const auto &lobby : lobbies) {
+    LobbiesModel::Entry entry;
+    entry.lobbyId = QString::number(lobby.id.ConvertToUint64());
+    entry.name = QString::fromStdString(lobby.name);
+    if (entry.name.trimmed().isEmpty()) {
+      entry.name = tr("未命名房间");
+    }
+    if (lobby.ownerId.IsValid()) {
+      entry.hostId = QString::number(lobby.ownerId.ConvertToUint64());
+    }
+    entry.hostName = QString::fromStdString(lobby.ownerName);
+    if (entry.hostName.isEmpty() && lobby.ownerId.IsValid() &&
+        SteamFriends()) {
+      const char *ownerName =
+          SteamFriends()->GetFriendPersonaName(lobby.ownerId);
+      if (ownerName) {
+        entry.hostName = QString::fromUtf8(ownerName);
+      }
+    }
+    entry.memberCount = lobby.memberCount;
+    entry.ping = lobby.pingMs >= 0 ? lobby.pingMs : -1;
+
+    entries.push_back(std::move(entry));
+  }
+
+  lobbiesModel_.setLobbies(std::move(entries));
 }
 
 void Backend::updateMembersList() {
@@ -594,5 +765,15 @@ void Backend::refreshHostId() {
   if (next != hostSteamId_) {
     hostSteamId_ = next;
     emit hostSteamIdChanged();
+  }
+}
+
+void Backend::updateLobbyInfoSignals() {
+  const QString id = lobbyId();
+  const QString name = lobbyName();
+  if (id != lastLobbyId_ || name != lastLobbyName_) {
+    lastLobbyId_ = id;
+    lastLobbyName_ = name;
+    emit stateChanged();
   }
 }

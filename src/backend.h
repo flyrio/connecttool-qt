@@ -10,10 +10,11 @@
 #include <unordered_map>
 
 #include "friends_model.h"
+#include "lobbies_model.h"
 #include "members_model.h"
+#include "steam_room_manager.h"
 
 class SteamNetworkingManager;
-class SteamRoomManager;
 class TCPServer;
 
 class Backend : public QObject {
@@ -23,6 +24,9 @@ class Backend : public QObject {
   Q_PROPERTY(bool isConnected READ isConnected NOTIFY stateChanged)
   Q_PROPERTY(QString status READ status NOTIFY stateChanged)
   Q_PROPERTY(QString lobbyId READ lobbyId NOTIFY stateChanged)
+  Q_PROPERTY(QString lobbyName READ lobbyName NOTIFY stateChanged)
+  Q_PROPERTY(bool publishLobby READ publishLobby WRITE setPublishLobby NOTIFY
+                 publishLobbyChanged)
   Q_PROPERTY(QString hostSteamId READ hostSteamId NOTIFY hostSteamIdChanged)
   Q_PROPERTY(QString joinTarget READ joinTarget WRITE setJoinTarget NOTIFY
                  joinTargetChanged)
@@ -36,7 +40,13 @@ class Backend : public QObject {
   Q_PROPERTY(QString friendFilter READ friendFilter WRITE setFriendFilter NOTIFY
                  friendFilterChanged)
   Q_PROPERTY(MembersModel *membersModel READ membersModel CONSTANT)
-  Q_PROPERTY(int inviteCooldown READ inviteCooldown NOTIFY inviteCooldownChanged)
+  Q_PROPERTY(LobbiesModel *lobbiesModel READ lobbiesModel CONSTANT)
+  Q_PROPERTY(
+      QString roomName READ roomName WRITE setRoomName NOTIFY roomNameChanged)
+  Q_PROPERTY(
+      bool lobbyRefreshing READ lobbyRefreshing NOTIFY lobbyRefreshingChanged)
+  Q_PROPERTY(
+      int inviteCooldown READ inviteCooldown NOTIFY inviteCooldownChanged)
 
 public:
   explicit Backend(QObject *parent = nullptr);
@@ -47,26 +57,35 @@ public:
   bool isConnected() const;
   QString status() const { return status_; }
   QString lobbyId() const;
+  QString lobbyName() const;
   QString hostSteamId() const { return hostSteamId_; }
   QString joinTarget() const { return joinTarget_; }
+  bool publishLobby() const { return publishLobby_; }
   int tcpClients() const;
   int localPort() const { return localPort_; }
   int localBindPort() const { return localBindPort_; }
   QVariantList friends() const { return friends_; }
   FriendsModel *friendsModel() { return &friendsModel_; }
+  LobbiesModel *lobbiesModel() { return &lobbiesModel_; }
   MembersModel *membersModel() { return &membersModel_; }
   QString friendFilter() const { return friendFilter_; }
   int inviteCooldown() const { return inviteCooldownSeconds_; }
+  QString roomName() const { return roomName_; }
+  bool lobbyRefreshing() const { return lobbyRefreshing_; }
 
   void setJoinTarget(const QString &id);
+  void setPublishLobby(bool publish);
   void setLocalPort(int port);
   void setLocalBindPort(int port);
   void setFriendFilter(const QString &text);
+  void setRoomName(const QString &name);
 
   Q_INVOKABLE void startHosting();
   Q_INVOKABLE void joinHost();
+  Q_INVOKABLE void joinLobby(const QString &lobbyId);
   Q_INVOKABLE void disconnect();
   Q_INVOKABLE void refreshFriends();
+  Q_INVOKABLE void refreshLobbies();
   Q_INVOKABLE void refreshMembers();
   Q_INVOKABLE void inviteFriend(const QString &steamId);
   Q_INVOKABLE void copyToClipboard(const QString &text);
@@ -82,16 +101,23 @@ signals:
   void friendFilterChanged();
   void inviteCooldownChanged();
   void hostSteamIdChanged();
+  void roomNameChanged();
+  void publishLobbyChanged();
+  void lobbyRefreshingChanged();
 
 private:
   void tick();
   void updateStatus();
   void updateMembersList();
   void updateFriendsList();
+  void
+  updateLobbiesList(const std::vector<SteamRoomManager::LobbyInfo> &lobbies);
   void ensureServerRunning();
   bool ensureSteamReady(const QString &actionLabel);
   void refreshHostId();
   void updateFriendCooldown(const QString &steamId, int seconds);
+  void updateLobbyInfoSignals();
+  void setLobbyRefreshing(bool refreshing);
 
   std::unique_ptr<SteamNetworkingManager> steamManager_;
   std::unique_ptr<SteamRoomManager> roomManager_;
@@ -115,9 +141,15 @@ private:
   int lastMemberLogCount_;
   QVariantList friends_;
   FriendsModel friendsModel_;
+  LobbiesModel lobbiesModel_;
   MembersModel membersModel_;
   QString friendFilter_;
   std::unordered_map<uint64_t, QString> memberAvatars_;
   std::unordered_map<uint64_t, int> inviteCooldowns_;
   int inviteCooldownSeconds_ = 0;
+  QString roomName_;
+  bool publishLobby_ = false;
+  QString lastLobbyId_;
+  QString lastLobbyName_;
+  bool lobbyRefreshing_ = false;
 };

@@ -1,4 +1,5 @@
 #include "backend.h"
+#include "lobbies_model.h"
 #include "members_model.h"
 
 #include <QCoreApplication>
@@ -18,6 +19,8 @@ int main(int argc, char *argv[]) {
   qmlRegisterUncreatableType<FriendsModel>("ConnectTool", 1, 0, "FriendsModel",
                                            "Provided by backend");
   qmlRegisterUncreatableType<MembersModel>("ConnectTool", 1, 0, "MembersModel",
+                                           "Provided by backend");
+  qmlRegisterUncreatableType<LobbiesModel>("ConnectTool", 1, 0, "LobbiesModel",
                                            "Provided by backend");
 
   Backend backend;

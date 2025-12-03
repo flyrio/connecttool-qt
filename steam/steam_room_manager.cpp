@@ -2,6 +2,17 @@
 #include "steam_networking_manager.h"
 #include <algorithm>
 #include <iostream>
+#include <isteamnetworkingutils.h>
+#include <utility>
+
+namespace {
+constexpr const char *kLobbyKeyName = "ct_name";
+constexpr const char *kLobbyKeyHostName = "ct_host_name";
+constexpr const char *kLobbyKeyHostId = "ct_host_id";
+constexpr const char *kLobbyKeyPingLocation = "ct_ping_loc";
+constexpr const char *kLobbyKeyTag = "ct_tag";
+constexpr const char *kLobbyTagValue = "1";
+} // namespace
 
 SteamFriendsCallbacks::SteamFriendsCallbacks(SteamNetworkingManager *manager,
                                              SteamRoomManager *roomManager)
@@ -47,6 +58,7 @@ void SteamMatchmakingCallbacks::OnLobbyCreated(LobbyCreated_t *pCallback,
     SteamFriends()->SetRichPresence("steam_display", "#Status_InLobby");
     SteamFriends()->SetRichPresence(
         "connect", std::to_string(pCallback->m_ulSteamIDLobby).c_str());
+    roomManager_->refreshLobbyMetadata();
   } else {
     std::cerr << "Failed to create lobby" << std::endl;
   }
@@ -54,15 +66,68 @@ void SteamMatchmakingCallbacks::OnLobbyCreated(LobbyCreated_t *pCallback,
 
 void SteamMatchmakingCallbacks::OnLobbyListReceived(LobbyMatchList_t *pCallback,
                                                     bool bIOFailure) {
+  if (!roomManager_) {
+    return;
+  }
   if (bIOFailure) {
     std::cerr << "Failed to receive lobby list - IO Failure" << std::endl;
+    roomManager_->clearLobbies();
+    roomManager_->lobbyInfos.clear();
+    roomManager_->notifyLobbyListUpdated();
     return;
   }
   roomManager_->clearLobbies();
+  roomManager_->lobbyInfos.clear();
+
+  SteamNetworkPingLocation_t localPingLocation{};
+  const bool hasLocalPing = SteamNetworkingUtils() &&
+                            SteamNetworkingUtils()->GetLocalPingLocation(
+                                localPingLocation) >= 0.0f;
+
+  std::vector<SteamRoomManager::LobbyInfo> infos;
+  infos.reserve(pCallback->m_nLobbiesMatching);
+
   for (uint32 i = 0; i < pCallback->m_nLobbiesMatching; ++i) {
     CSteamID lobbyID = SteamMatchmaking()->GetLobbyByIndex(i);
     roomManager_->addLobby(lobbyID);
+    SteamRoomManager::LobbyInfo info;
+    info.id = lobbyID;
+    info.ownerId = SteamMatchmaking()->GetLobbyOwner(lobbyID);
+    info.memberCount = SteamMatchmaking()->GetNumLobbyMembers(lobbyID);
+
+    const char *name = SteamMatchmaking()->GetLobbyData(lobbyID, kLobbyKeyName);
+    if (name) {
+      info.name = name;
+    }
+
+    const char *ownerName =
+        SteamMatchmaking()->GetLobbyData(lobbyID, kLobbyKeyHostName);
+    if (ownerName) {
+      info.ownerName = ownerName;
+    } else if (info.ownerId.IsValid() && SteamFriends()) {
+      const char *fallback =
+          SteamFriends()->GetFriendPersonaName(info.ownerId);
+      if (fallback) {
+        info.ownerName = fallback;
+      }
+    }
+
+    const char *pingLoc =
+        SteamMatchmaking()->GetLobbyData(lobbyID, kLobbyKeyPingLocation);
+    if (hasLocalPing && pingLoc && pingLoc[0] != '\0' &&
+        SteamNetworkingUtils()) {
+      SteamNetworkPingLocation_t remote;
+      if (SteamNetworkingUtils()->ParsePingLocationString(pingLoc, remote)) {
+        info.pingMs =
+            SteamNetworkingUtils()->EstimatePingTimeFromLocalHost(remote);
+      }
+    }
+
+    infos.push_back(std::move(info));
   }
+  roomManager_->lobbyInfos = std::move(infos);
+  roomManager_->notifyLobbyListUpdated();
+
   std::cout << "Received " << pCallback->m_nLobbiesMatching << " lobbies"
             << std::endl;
 }
@@ -97,6 +162,8 @@ void SteamMatchmakingCallbacks::OnLobbyEntered(LobbyEnter_t *pCallback) {
           }
         }
       }
+    } else {
+      roomManager_->refreshLobbyMetadata();
     }
   } else {
     std::cerr << "Failed to enter lobby" << std::endl;
@@ -184,6 +251,17 @@ void SteamRoomManager::leaveLobby() {
 
 bool SteamRoomManager::searchLobbies() {
   lobbies.clear();
+  lobbyInfos.clear();
+  if (!SteamMatchmaking()) {
+    std::cerr << "Failed to request lobby list - matchmaking unavailable"
+              << std::endl;
+    return false;
+  }
+  SteamMatchmaking()->AddRequestLobbyListStringFilter(
+      kLobbyKeyTag, kLobbyTagValue, k_ELobbyComparisonEqual);
+  SteamMatchmaking()->AddRequestLobbyListDistanceFilter(
+      k_ELobbyDistanceFilterWorldwide);
+  SteamMatchmaking()->AddRequestLobbyListResultCountFilter(100);
   SteamAPICall_t hSteamAPICall = SteamMatchmaking()->RequestLobbyList();
   if (hSteamAPICall == k_uAPICallInvalid) {
     std::cerr << "Failed to request lobby list" << std::endl;
@@ -245,4 +323,93 @@ std::vector<CSteamID> SteamRoomManager::getLobbyMembers() const {
     }
   }
   return members;
+}
+
+void SteamRoomManager::setLobbyName(const std::string &name) {
+  lobbyName_ = name;
+  refreshLobbyMetadata();
+}
+
+void SteamRoomManager::setPublishLobby(bool publish) {
+  publishLobby_ = publish;
+  refreshLobbyMetadata();
+}
+
+std::string SteamRoomManager::getLobbyName() const {
+  if (currentLobby == k_steamIDNil || !SteamMatchmaking()) {
+    return {};
+  }
+  const char *name = SteamMatchmaking()->GetLobbyData(currentLobby,
+                                                      kLobbyKeyName);
+  if (name && name[0] != '\0') {
+    return name;
+  }
+  return {};
+}
+
+void SteamRoomManager::setLobbyListCallback(
+    std::function<void(const std::vector<LobbyInfo> &)> callback) {
+  lobbyListCallback_ = std::move(callback);
+}
+
+void SteamRoomManager::refreshLobbyMetadata() {
+  if (currentLobby == k_steamIDNil || !SteamMatchmaking()) {
+    return;
+  }
+  if (!networkingManager_ || !networkingManager_->isHost()) {
+    return;
+  }
+
+  if (!publishLobby_) {
+    SteamMatchmaking()->DeleteLobbyData(currentLobby, kLobbyKeyTag);
+    SteamMatchmaking()->DeleteLobbyData(currentLobby, kLobbyKeyName);
+    SteamMatchmaking()->DeleteLobbyData(currentLobby, kLobbyKeyHostId);
+    SteamMatchmaking()->DeleteLobbyData(currentLobby, kLobbyKeyHostName);
+    SteamMatchmaking()->DeleteLobbyData(currentLobby, kLobbyKeyPingLocation);
+    return;
+  }
+
+  SteamMatchmaking()->SetLobbyData(currentLobby, kLobbyKeyTag, kLobbyTagValue);
+
+  std::string nameToUse = lobbyName_;
+  if (nameToUse.empty() && SteamFriends()) {
+    const char *persona = SteamFriends()->GetPersonaName();
+    if (persona) {
+      nameToUse = persona;
+    }
+  }
+  if (!nameToUse.empty()) {
+    SteamMatchmaking()->SetLobbyData(currentLobby, kLobbyKeyName,
+                                     nameToUse.c_str());
+  }
+
+  CSteamID owner = SteamMatchmaking()->GetLobbyOwner(currentLobby);
+  if (owner.IsValid()) {
+    SteamMatchmaking()->SetLobbyData(
+        currentLobby, kLobbyKeyHostId,
+        std::to_string(owner.ConvertToUint64()).c_str());
+  }
+  if (SteamFriends()) {
+    const char *ownerName = SteamFriends()->GetPersonaName();
+    if (ownerName) {
+      SteamMatchmaking()->SetLobbyData(currentLobby, kLobbyKeyHostName,
+                                       ownerName);
+    }
+  }
+
+  if (SteamNetworkingUtils()) {
+    SteamNetworkPingLocation_t local;
+    SteamNetworkingUtils()->GetLocalPingLocation(local);
+    char buffer[k_cchMaxSteamNetworkingPingLocationString]{};
+    SteamNetworkingUtils()->ConvertPingLocationToString(
+        local, buffer, sizeof(buffer));
+    SteamMatchmaking()->SetLobbyData(currentLobby, kLobbyKeyPingLocation,
+                                     buffer);
+  }
+}
+
+void SteamRoomManager::notifyLobbyListUpdated() {
+  if (lobbyListCallback_) {
+    lobbyListCallback_(lobbyInfos);
+  }
 }
