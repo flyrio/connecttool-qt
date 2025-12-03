@@ -112,7 +112,10 @@ qt_add_qml_module(connecttool-qt
     URI ConnectTool
     VERSION 1.0
     QML_FILES
-        qml/ConnectTool/Main.qml)
+        qml/ConnectTool/Main.qml
+    RESOURCES
+        qml/ConnectTool/GitHub.svg
+        qml/ConnectTool/QQ.svg)
 
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/steam_appid.txt "480\n")
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/steam_appid.txt DESTINATION bin)
