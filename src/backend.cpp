@@ -117,6 +117,10 @@ Backend::Backend(QObject *parent)
   connect(&slowTimer_, &QTimer::timeout, this, &Backend::refreshFriends);
   slowTimer_.start(5000);
 
+  friendsRefreshResetTimer_.setSingleShot(true);
+  connect(&friendsRefreshResetTimer_, &QTimer::timeout, this,
+          [this]() { setFriendsRefreshing(false); });
+
   connect(&cooldownTimer_, &QTimer::timeout, this, [this]() {
     bool anyChanged = false;
     int maxCooldown = 0;
@@ -428,8 +432,10 @@ void Backend::disconnect() {
 
 void Backend::refreshFriends() {
   if (!steamReady_ || !steamManager_) {
+    setFriendsRefreshing(false);
     return;
   }
+  setFriendsRefreshing(true);
   QVariantList updated;
   std::vector<FriendsModel::Entry> modelData;
   int idx = 0;
@@ -462,6 +468,7 @@ void Backend::refreshFriends() {
     friends_ = updated;
     emit friendsChanged();
   }
+  friendsRefreshResetTimer_.start(1500);
 }
 
 void Backend::refreshLobbies() {
@@ -565,6 +572,14 @@ void Backend::updateFriendCooldown(const QString &steamId, int seconds) {
   if (listChanged) {
     emit friendsChanged();
   }
+}
+
+void Backend::setFriendsRefreshing(bool refreshing) {
+  if (friendsRefreshing_ == refreshing) {
+    return;
+  }
+  friendsRefreshing_ = refreshing;
+  emit friendsRefreshingChanged();
 }
 
 void Backend::setLobbyRefreshing(bool refreshing) {

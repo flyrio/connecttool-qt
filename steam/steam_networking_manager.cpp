@@ -65,7 +65,7 @@ bool SteamNetworkingManager::initialize() {
       &recvBufferMsgs);
 
   // Cap send rate to a conservative value to keep reliable window stable
-  int32 sendRate = 2 * 1024 * 1024; // 3 MB/s
+  int32 sendRate = 1024 * 1024; // ~1000 KB/s
   SteamNetworkingUtils()->SetConfigValue(
       k_ESteamNetworkingConfig_SendRateMin, k_ESteamNetworkingConfig_Global, 0,
       k_ESteamNetworkingConfig_Int32, &sendRate);
