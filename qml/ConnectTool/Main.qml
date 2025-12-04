@@ -124,20 +124,25 @@ ApplicationWindow {
                         ColumnLayout {
                             spacing: 2
                             Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+
                             Label {
                                 text: title
                                 color: "#e6efff"
                                 font.pixelSize: 15
+                                Layout.fillWidth: true
+                                horizontalAlignment: Text.AlignLeft
                             }
                             Label {
                                 text: subtitle
                                 color: "#7f8cab"
                                 font.pixelSize: 12
                                 elide: Text.ElideRight
+                                Layout.fillWidth: true
+                                horizontalAlignment: Text.AlignLeft
                             }
                         }
                     }
-
                     MouseArea {
                         anchors.fill: parent
                         hoverEnabled: true
