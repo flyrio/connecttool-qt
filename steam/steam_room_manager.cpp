@@ -225,6 +225,9 @@ void SteamMatchmakingCallbacks::OnLobbyEntered(LobbyEnter_t *pCallback) {
 
     // Only join host if not the host
     if (!manager_->isHost()) {
+      if (roomManager_) {
+        roomManager_->decideTransportForCurrentLobby();
+      }
       CSteamID hostID =
           SteamMatchmaking()->GetLobbyOwner(pCallback->m_ulSteamIDLobby);
       if (manager_->joinHost(hostID.ConvertToUint64())) {
@@ -483,6 +486,33 @@ void SteamRoomManager::refreshLobbyMetadata() {
     SteamMatchmaking()->SetLobbyData(currentLobby, kLobbyKeyPingLocation,
                                      buffer);
   }
+}
+
+void SteamRoomManager::decideTransportForCurrentLobby() {
+  if (!networkingManager_ || networkingManager_->isHost()) {
+    return;
+  }
+  if (currentLobby == k_steamIDNil || !SteamMatchmaking() ||
+      !SteamNetworkingUtils()) {
+    return;
+  }
+
+  const char *pingLocStr =
+      SteamMatchmaking()->GetLobbyData(currentLobby, kLobbyKeyPingLocation);
+  SteamNetworkPingLocation_t remote{};
+  SteamNetworkPingLocation_t local{};
+  int directPing = -1;
+
+  if (pingLocStr && pingLocStr[0] != '\0' &&
+      SteamNetworkingUtils()->ParsePingLocationString(pingLocStr, remote) &&
+      SteamNetworkingUtils()->GetLocalPingLocation(local) >= 0.0f) {
+    directPing =
+        SteamNetworkingUtils()->EstimatePingTimeBetweenTwoLocations(local,
+                                                                     remote);
+  }
+
+  const int relayPing = networkingManager_->estimateRelayPingMs();
+  networkingManager_->applyTransportPreference(directPing, relayPing);
 }
 
 void SteamRoomManager::notifyLobbyListUpdated() {

@@ -1,6 +1,7 @@
 #include "steam_networking_manager.h"
 #include <algorithm>
 #include <iostream>
+#include <limits>
 
 SteamNetworkingManager *SteamNetworkingManager::instance = nullptr;
 
@@ -240,6 +241,63 @@ SteamNetworkingManager::getConnectionRelayInfo(HSteamNetConnection conn) const {
     }
   }
   return "N/A";
+}
+
+int SteamNetworkingManager::estimateRelayPingMs() const {
+  if (!SteamNetworkingUtils()) {
+    return -1;
+  }
+  const int popCount = SteamNetworkingUtils()->GetPOPCount();
+  if (popCount <= 0) {
+    return -1;
+  }
+  std::vector<SteamNetworkingPOPID> pops(popCount);
+  const int filled = SteamNetworkingUtils()->GetPOPList(pops.data(), popCount);
+  int best = std::numeric_limits<int>::max();
+  for (int i = 0; i < filled; ++i) {
+    SteamNetworkingPOPID via = 0;
+    const int ping = SteamNetworkingUtils()->GetPingToDataCenter(pops[i], &via);
+    if (ping >= 0 && ping < best) {
+      best = ping;
+    }
+  }
+  if (best == std::numeric_limits<int>::max()) {
+    return -1;
+  }
+  // Approximate both legs to the relay POPs. Remote leg is unknown, assume
+  // symmetry for a quick decision.
+  return best * 2;
+}
+
+void SteamNetworkingManager::applyTransportPreference(int directPingMs,
+                                                      int relayPingMs) {
+  if (!SteamNetworkingUtils()) {
+    return;
+  }
+  constexpr int kHysteresisMs = 5;
+  int32 sdrPenalty = 0;
+  int32 icePenalty = 0;
+
+  if (directPingMs >= 0 && relayPingMs >= 0) {
+    if (directPingMs + kHysteresisMs < relayPingMs) {
+      sdrPenalty = relayPingMs - directPingMs;
+    } else if (relayPingMs + kHysteresisMs < directPingMs) {
+      icePenalty = directPingMs - relayPingMs;
+    }
+  }
+
+  SteamNetworkingUtils()->SetConfigValue(
+      k_ESteamNetworkingConfig_P2P_Transport_SDR_Penalty,
+      k_ESteamNetworkingConfig_Global, 0, k_ESteamNetworkingConfig_Int32,
+      &sdrPenalty);
+  SteamNetworkingUtils()->SetConfigValue(
+      k_ESteamNetworkingConfig_P2P_Transport_ICE_Penalty,
+      k_ESteamNetworkingConfig_Global, 0, k_ESteamNetworkingConfig_Int32,
+      &icePenalty);
+
+  std::cout << "[SteamNet] Transport pref: direct=" << directPingMs
+            << "ms, relay≈" << relayPingMs << "ms, SDR penalty="
+            << sdrPenalty << ", ICE penalty=" << icePenalty << std::endl;
 }
 
 void SteamNetworkingManager::handleConnectionStatusChanged(

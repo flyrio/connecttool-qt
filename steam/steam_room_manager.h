@@ -91,6 +91,7 @@ private:
   friend class SteamFriendsCallbacks;
   friend class Backend;
   void refreshLobbyMetadata();
+  void decideTransportForCurrentLobby();
   void notifyLobbyListUpdated();
   void handlePingMessage(const std::string &payload);
 
