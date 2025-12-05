@@ -436,6 +436,11 @@ ApplicationWindow {
                     Layout.fillHeight: true
                     spacing: 16
 
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        spacing: 16
+
                     Frame {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
@@ -644,6 +649,203 @@ ApplicationWindow {
                                     Label { text: qsTr("暂无成员"); color: "#8090b3" }
                                     Label { text: qsTr("创建房间或等待邀请即可出现。"); color: "#62708f"; font.pixelSize: 12 }
                                 }
+                            }
+                        }
+                    }
+
+                        Frame {
+                            id: chatFrame
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            Layout.preferredHeight: 320
+                            padding: 16
+                            Material.elevation: 6
+                            background: Rectangle { radius: 12; color: "#111827"; border.color: "#1f2b3c" }
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                spacing: 10
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    Label {
+                                        text: qsTr("房间聊天")
+                                        font.pixelSize: 18
+                                        color: "#e6efff"
+                                    }
+                                    Rectangle { Layout.fillWidth: true; color: "transparent" }
+                                    Label {
+                                        text: qsTr("共 %1 条").arg(backend.chatModel ? backend.chatModel.count : 0)
+                                        color: "#7f8cab"
+                                        font.pixelSize: 12
+                                        Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
+                                    }
+                                }
+
+                                Item {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    Layout.preferredHeight: 280
+
+                                    ListView {
+                                        id: chatList
+                                        anchors.fill: parent
+                                        anchors.margins: 6
+                                        model: backend.chatModel
+                                        spacing: 12
+                                        clip: true
+                                        ScrollBar.vertical: ScrollBar {}
+                                        onCountChanged: chatFrame.scrollToBottom()
+                                        onModelChanged: chatFrame.scrollToBottom()
+                                        onContentHeightChanged: chatFrame.scrollToBottom()
+                                        Component.onCompleted: chatFrame.scrollToBottom()
+
+                                        delegate: Item {
+                                            required property string displayName
+                                            required property string avatar
+                                            required property string message
+                                            required property bool isSelf
+                                            required property string steamId
+                                            required property var timestamp
+                                            width: chatList.width
+                                            implicitHeight: bubbleRow.implicitHeight + 8
+
+                                            Row {
+                                                id: bubbleRow
+                                                anchors.left: isSelf ? undefined : parent.left
+                                                anchors.right: isSelf ? parent.right : undefined
+                                                anchors.margins: 6
+                                                spacing: 10
+                                                width: parent.width
+                                                layoutDirection: isSelf ? Qt.RightToLeft : Qt.LeftToRight
+
+                                                Item {
+                                                    width: 40
+                                                    height: 40
+                                                    Rectangle {
+                                                        id: chatAvatarFrame
+                                                        anchors.fill: parent
+                                                        radius: width / 2
+                                                        color: avatar.length > 0 ? "transparent" : "#1a2436"
+                                                        border.color: avatar.length > 0 ? "transparent" : "#1f2f45"
+                                                        layer.enabled: avatar.length > 0
+                                                        layer.effect: OpacityMask {
+                                                            source: chatAvatarFrame
+                                                            maskSource: Rectangle {
+                                                                width: chatAvatarFrame.width
+                                                                height: chatAvatarFrame.height
+                                                                radius: chatAvatarFrame.width / 2
+                                                                color: "white"
+                                                            }
+                                                        }
+                                                        Image {
+                                                            anchors.fill: parent
+                                                            source: avatar
+                                                            visible: avatar.length > 0
+                                                            fillMode: Image.PreserveAspectCrop
+                                                            smooth: true
+                                                        }
+                                                        Label {
+                                                            anchors.centerIn: parent
+                                                            visible: avatar.length === 0
+                                                            text: displayName.length > 0 ? displayName[0] : "?"
+                                                            color: "#6f7e9c"
+                                                            font.pixelSize: 16
+                                                        }
+                                                    }
+                                                }
+
+                                                Rectangle {
+                                                    id: bubble
+                                                    radius: 12
+                                                    color: isSelf ? "#14342e" : "#151e2f"
+                                                    border.color: isSelf ? "#23c9a9" : "#1f2f45"
+                                                    width: Math.min(chatList.width * 0.72, Math.max(messageText.implicitWidth, headerRow.implicitWidth) + 28)
+                                                    implicitHeight: bubbleContent.implicitHeight + 16
+
+                                                    ColumnLayout {
+                                                        id: bubbleContent
+                                                        anchors.fill: parent
+                                                        anchors.margins: 10
+                                                        spacing: 6
+
+                                                        RowLayout {
+                                                            id: headerRow
+                                                            Layout.fillWidth: true
+                                                            spacing: 6
+                                                            Label {
+                                                                text: displayName
+                                                                color: isSelf ? "#8de3cf" : "#c7d9ff"
+                                                                font.pixelSize: 12
+                                                                elide: Text.ElideRight
+                                                                Layout.fillWidth: true
+                                                            }
+                                                            Label {
+                                                                color: "#7f8cab"
+                                                                font.pixelSize: 11
+                                                                text: timestamp ? Qt.formatTime(timestamp, "HH:mm") : ""
+                                                                visible: text.length > 0
+                                                                Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                                                            }
+                                                        }
+                                                        Text {
+                                                            id: messageText
+                                                            Layout.fillWidth: true
+                                                            text: message
+                                                            color: "#e6efff"
+                                                            font.pixelSize: 14
+                                                            wrapMode: Text.Wrap
+                                                            textFormat: Text.PlainText
+                                                            width: bubble.width - 20
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Column {
+                                        anchors.centerIn: parent
+                                        spacing: 6
+                                        visible: chatList.count === 0
+                                        Label { text: qsTr("暂无消息"); color: "#8090b3" }
+                                        Label { text: qsTr("加入房间后即可在此聊天。"); color: "#62708f"; font.pixelSize: 12 }
+                                    }
+                                }
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 10
+
+                                    TextField {
+                                        id: chatInput
+                                        Layout.fillWidth: true
+                                        placeholderText: qsTr("输入要发送的内容…")
+                                        enabled: backend.lobbyId.length > 0
+                                        onAccepted: chatFrame.sendMessage()
+                                    }
+
+                                    Button {
+                                        text: qsTr("发送")
+                                        enabled: backend.lobbyId.length > 0 && chatInput.text.trim().length > 0
+                                        Layout.alignment: Qt.AlignVCenter
+                                        onClicked: chatFrame.sendMessage()
+                                    }
+                                }
+                            }
+
+                            function sendMessage() {
+                                if (chatInput.text.trim().length === 0) {
+                                    return;
+                                }
+                                backend.sendChatMessage(chatInput.text);
+                                chatInput.text = "";
+                                chatInput.forceActiveFocus();
+                            }
+
+                            function scrollToBottom() {
+                                Qt.callLater(function() { chatList.positionViewAtEnd(); });
                             }
                         }
                     }

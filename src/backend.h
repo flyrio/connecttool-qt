@@ -11,6 +11,7 @@
 #include <unordered_map>
 
 #include "friends_model.h"
+#include "chat_model.h"
 #include "lobbies_model.h"
 #include "members_model.h"
 #include "steam_room_manager.h"
@@ -44,6 +45,7 @@ class Backend : public QObject {
   Q_PROPERTY(FriendsModel *friendsModel READ friendsModel NOTIFY friendsChanged)
   Q_PROPERTY(QString friendFilter READ friendFilter WRITE setFriendFilter NOTIFY
                  friendFilterChanged)
+  Q_PROPERTY(ChatModel *chatModel READ chatModel CONSTANT)
   Q_PROPERTY(bool friendsRefreshing READ friendsRefreshing NOTIFY
                  friendsRefreshingChanged)
   Q_PROPERTY(MembersModel *membersModel READ membersModel CONSTANT)
@@ -86,6 +88,7 @@ public:
   FriendsModel *friendsModel() { return &friendsModel_; }
   LobbiesModel *lobbiesModel() { return &lobbiesModel_; }
   MembersModel *membersModel() { return &membersModel_; }
+  ChatModel *chatModel() { return &chatModel_; }
   QString friendFilter() const { return friendFilter_; }
   bool friendsRefreshing() const { return friendsRefreshing_; }
   int inviteCooldown() const { return inviteCooldownSeconds_; }
@@ -117,6 +120,7 @@ public:
   Q_INVOKABLE void inviteFriend(const QString &steamId);
   Q_INVOKABLE void addFriend(const QString &steamId);
   Q_INVOKABLE void copyToClipboard(const QString &text);
+  Q_INVOKABLE void sendChatMessage(const QString &text);
 
 signals:
   void stateChanged();
@@ -142,6 +146,8 @@ private:
   void updateFriendsList();
   void
   updateLobbiesList(const std::vector<SteamRoomManager::LobbyInfo> &lobbies);
+  QString avatarForSteamId(const CSteamID &memberId);
+  void handleChatMessage(uint64_t senderId, const QString &message);
   void ensureServerRunning();
   bool ensureSteamReady(const QString &actionLabel);
   void refreshHostId();
@@ -190,6 +196,7 @@ private:
   FriendsModel friendsModel_;
   LobbiesModel lobbiesModel_;
   MembersModel membersModel_;
+  ChatModel chatModel_;
   QString friendFilter_;
   std::unordered_map<uint64_t, QString> memberAvatars_;
   std::unordered_map<uint64_t, int> inviteCooldowns_;
