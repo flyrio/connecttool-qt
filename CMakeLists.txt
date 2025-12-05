@@ -92,6 +92,7 @@ add_executable(connecttool-qt
     src/backend.cpp
     src/lobbies_model.cpp
     src/friends_model.cpp
+    src/chat_model.cpp
     src/members_model.cpp
     net/multiplex_manager.cpp
     net/tcp_server.cpp

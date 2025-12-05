@@ -77,6 +77,9 @@ public:
   void setLobbyListCallback(
       std::function<void(const std::vector<LobbyInfo> &)> callback);
   void setHostLeftCallback(std::function<void()> callback);
+  void setChatMessageCallback(
+      std::function<void(const CSteamID &, const std::string &)> callback);
+  bool sendChatMessage(const std::string &message);
   void broadcastPings(
       const std::vector<std::tuple<uint64_t, int, std::string>> &pings);
   bool getRemotePing(const CSteamID &id, int &ping, std::string &relay) const;
@@ -102,6 +105,7 @@ private:
   void decideTransportForCurrentLobby();
   void notifyLobbyListUpdated();
   void handlePingMessage(const std::string &payload);
+  void handleChatMessage(const CSteamID &sender, const std::string &payload);
   bool lobbyWantsTun(CSteamID lobby) const;
 
   SteamNetworkingManager *networkingManager_;
@@ -124,4 +128,6 @@ private:
   std::function<void(bool wantsTun, const CSteamID &lobby)>
       lobbyModeChangedCallback_;
   std::function<void()> hostLeftCallback_;
+  std::function<void(const CSteamID &, const std::string &)>
+      chatMessageCallback_;
 };

@@ -10,6 +10,7 @@
 #include <QClipboard>
 #include <QDesktopServices>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QGuiApplication>
 #include <QMetaObject>
 #include <QQmlEngine>
@@ -190,6 +191,15 @@ Backend::Backend(QObject *parent)
     QMetaObject::invokeMethod(
         this, [this]() { disconnect(); }, Qt::QueuedConnection);
   });
+  roomManager_->setChatMessageCallback(
+      [this](const CSteamID &sender, const std::string &payload) {
+        const uint64_t senderId = sender.ConvertToUint64();
+        const QString text =
+            QString::fromUtf8(payload.data(), static_cast<int>(payload.size()));
+        QMetaObject::invokeMethod(
+            this, [this, senderId, text]() { handleChatMessage(senderId, text); },
+            Qt::QueuedConnection);
+      });
   roomManager_->setLobbyListCallback(
       [this](const std::vector<SteamRoomManager::LobbyInfo> &lobbies) {
         QMetaObject::invokeMethod(
@@ -784,6 +794,7 @@ void Backend::disconnect() {
     setJoinTarget(QString());
   }
   lastAutoJoinTarget_.clear();
+  chatModel_.clear();
 
   if (wasHost && !mySteamId.isEmpty()) {
     lobbiesModel_.removeByHostId(mySteamId);
@@ -1135,6 +1146,54 @@ void Backend::copyToClipboard(const QString &text) {
   }
 }
 
+void Backend::sendChatMessage(const QString &text) {
+  const QString trimmed = text.trimmed();
+  if (trimmed.isEmpty()) {
+    return;
+  }
+  if (!ensureSteamReady(tr("发送消息"))) {
+    return;
+  }
+  if (!roomManager_ || !roomManager_->getCurrentLobby().IsValid()) {
+    qWarning() << tr("请先加入房间后再发送消息。");
+    return;
+  }
+  const std::string payload = trimmed.toUtf8().toStdString();
+  if (!roomManager_->sendChatMessage(payload)) {
+    qWarning() << tr("消息发送失败。");
+  }
+}
+
+void Backend::handleChatMessage(uint64_t senderId, const QString &message) {
+  const QString trimmed = message.trimmed();
+  if (trimmed.isEmpty()) {
+    return;
+  }
+  ChatModel::Entry entry;
+  entry.steamId = QString::number(senderId);
+  entry.message = trimmed;
+  entry.timestamp = QDateTime::currentDateTime();
+
+  const CSteamID senderSteam(static_cast<uint64>(senderId));
+  if (senderSteam.IsValid() && SteamFriends()) {
+    const char *name = SteamFriends()->GetFriendPersonaName(senderSteam);
+    if (name && name[0] != '\0') {
+      entry.displayName = QString::fromUtf8(name);
+    }
+  }
+  if (entry.displayName.isEmpty()) {
+    entry.displayName = entry.steamId;
+  }
+  entry.avatar = avatarForSteamId(senderSteam);
+
+  if (steamReady_ && SteamUser()) {
+    const CSteamID myId = SteamUser()->GetSteamID();
+    entry.isSelf = myId.IsValid() && senderSteam == myId;
+  }
+
+  chatModel_.appendMessage(std::move(entry));
+}
+
 void Backend::tick() {
   if (!steamReady_) {
     return;
@@ -1293,6 +1352,25 @@ void Backend::updateLobbiesList(
   lobbiesModel_.setLobbies(std::move(entries));
 }
 
+QString Backend::avatarForSteamId(const CSteamID &memberId) {
+  if (!memberId.IsValid()) {
+    return {};
+  }
+  const uint64_t key = memberId.ConvertToUint64();
+  const auto cached = memberAvatars_.find(key);
+  if (cached != memberAvatars_.end()) {
+    return cached->second;
+  }
+
+  const std::string avatarData = SteamUtils::getAvatarDataUrl(memberId);
+  if (avatarData.empty()) {
+    return {};
+  }
+  QString avatar = QString::fromStdString(avatarData);
+  memberAvatars_.emplace(key, avatar);
+  return avatar;
+}
+
 void Backend::updateMembersList() {
   if (!steamReady_) {
     membersModel_.setMembers({});
@@ -1325,21 +1403,6 @@ void Backend::updateMembersList() {
     std::unordered_set<uint64_t> seen;
     seen.reserve(lobbyMembers.size());
 
-    const auto avatarForMember = [this](const CSteamID &memberId) -> QString {
-      const uint64_t key = memberId.ConvertToUint64();
-      const auto cached = memberAvatars_.find(key);
-      if (cached != memberAvatars_.end()) {
-        return cached->second;
-      }
-      const std::string avatarData = SteamUtils::getAvatarDataUrl(memberId);
-      if (avatarData.empty()) {
-        return {};
-      }
-      QString avatar = QString::fromStdString(avatarData);
-      memberAvatars_.emplace(key, avatar);
-      return avatar;
-    };
-
     for (const auto &memberId : lobbyMembers) {
       const uint64 memberValue = memberId.ConvertToUint64();
       seen.insert(memberValue);
@@ -1352,7 +1415,7 @@ void Backend::updateMembersList() {
       entry.steamId = QString::number(memberValue);
       entry.displayName =
           QString::fromUtf8(SteamFriends()->GetFriendPersonaName(memberId));
-      entry.avatar = avatarForMember(memberId);
+      entry.avatar = avatarForSteamId(memberId);
       entry.ping = -1;
       entry.relay = QStringLiteral("-");
 
@@ -1411,23 +1474,6 @@ void Backend::updateMembersList() {
   std::unordered_set<uint64_t> seen;
   seen.reserve(lobbyMembers.size());
 
-  const auto avatarForMember = [this](const CSteamID &memberId) -> QString {
-    const uint64_t key = memberId.ConvertToUint64();
-    const auto cached = memberAvatars_.find(key);
-    if (cached != memberAvatars_.end()) {
-      return cached->second;
-    }
-
-    const std::string avatarData = SteamUtils::getAvatarDataUrl(memberId);
-    if (avatarData.empty()) {
-      return {};
-    }
-
-    QString avatar = QString::fromStdString(avatarData);
-    memberAvatars_.emplace(key, avatar);
-    return avatar;
-  };
-
   const auto isMemberHost = [&](const CSteamID &member) -> bool {
     return hostId.IsValid() && member == hostId;
   };
@@ -1443,7 +1489,7 @@ void Backend::updateMembersList() {
     entry.steamId = QString::number(memberValue);
     entry.displayName =
         QString::fromUtf8(SteamFriends()->GetFriendPersonaName(memberId));
-    entry.avatar = avatarForMember(memberId);
+    entry.avatar = avatarForSteamId(memberId);
     entry.relay = QStringLiteral("-");
     entry.ping = -1;
     const bool memberIsHost = isMemberHost(memberId);
@@ -1509,7 +1555,7 @@ void Backend::updateMembersList() {
       entry.steamId = QString::number(remoteValue);
       entry.displayName =
           QString::fromUtf8(SteamFriends()->GetFriendPersonaName(remoteId));
-      entry.avatar = avatarForMember(remoteId);
+      entry.avatar = avatarForSteamId(remoteId);
       entry.ping = steamManager_->getConnectionPing(conn);
       const std::string relayInfo = steamManager_->getConnectionRelayInfo(conn);
       entry.relay =

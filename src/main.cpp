@@ -1,4 +1,5 @@
 #include "backend.h"
+#include "chat_model.h"
 #include "lobbies_model.h"
 #include "members_model.h"
 
@@ -22,6 +23,8 @@ int main(int argc, char *argv[]) {
                                            "Provided by backend");
   qmlRegisterUncreatableType<LobbiesModel>("ConnectTool", 1, 0, "LobbiesModel",
                                            "Provided by backend");
+  qmlRegisterUncreatableType<ChatModel>("ConnectTool", 1, 0, "ChatModel",
+                                        "Provided by backend");
 
   Backend backend;
 

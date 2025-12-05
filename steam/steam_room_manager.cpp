@@ -67,13 +67,18 @@ void SteamMatchmakingCallbacks::OnLobbyChatMsg(LobbyChatMsg_t *pCallback) {
   if (read <= 0 || type != k_EChatEntryTypeChatMsg) {
     return;
   }
-  CSteamID owner = SteamMatchmaking()->GetLobbyOwner(pCallback->m_ulSteamIDLobby);
-  if (owner.IsValid() && sender.IsValid() && sender != owner) {
-    return; // only trust host broadcast
-  }
   data[std::min<int>(read, sizeof(data) - 1)] = '\0';
   const std::string payload(data);
-  roomManager_->handlePingMessage(payload);
+  if (payload.rfind(kPingPrefix, 0) == 0) {
+    CSteamID owner =
+        SteamMatchmaking()->GetLobbyOwner(pCallback->m_ulSteamIDLobby);
+    if (owner.IsValid() && sender.IsValid() && sender != owner) {
+      return; // only trust host broadcast for ping payloads
+    }
+    roomManager_->handlePingMessage(payload);
+    return;
+  }
+  roomManager_->handleChatMessage(sender, payload);
 }
 
 void SteamMatchmakingCallbacks::OnLobbyCreated(LobbyCreated_t *pCallback,
@@ -502,6 +507,20 @@ void SteamRoomManager::setHostLeftCallback(std::function<void()> callback) {
   hostLeftCallback_ = std::move(callback);
 }
 
+void SteamRoomManager::setChatMessageCallback(
+    std::function<void(const CSteamID &, const std::string &)> callback) {
+  chatMessageCallback_ = std::move(callback);
+}
+
+bool SteamRoomManager::sendChatMessage(const std::string &message) {
+  if (message.empty() || currentLobby == k_steamIDNil || !SteamMatchmaking()) {
+    return false;
+  }
+  const int length = static_cast<int>(message.size());
+  return SteamMatchmaking()->SendLobbyChatMsg(currentLobby, message.c_str(),
+                                              length);
+}
+
 void SteamRoomManager::refreshLobbyMetadata() {
   if (currentLobby == k_steamIDNil || !SteamMatchmaking()) {
     return;
@@ -675,6 +694,14 @@ void SteamRoomManager::handlePingMessage(const std::string &payload) {
     }
     start = next + 1;
   }
+}
+
+void SteamRoomManager::handleChatMessage(const CSteamID &sender,
+                                         const std::string &payload) {
+  if (!chatMessageCallback_ || payload.empty() || !sender.IsValid()) {
+    return;
+  }
+  chatMessageCallback_(sender, payload);
 }
 
 bool SteamRoomManager::getRemotePing(const CSteamID &id, int &ping,
