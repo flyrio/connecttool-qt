@@ -36,6 +36,8 @@ class Backend : public QObject {
   Q_PROPERTY(QString hostSteamId READ hostSteamId NOTIFY hostSteamIdChanged)
   Q_PROPERTY(QString joinTarget READ joinTarget WRITE setJoinTarget NOTIFY
                  joinTargetChanged)
+  Q_PROPERTY(int relayPing READ relayPing NOTIFY relayPingChanged)
+  Q_PROPERTY(QVariantList relayPops READ relayPops NOTIFY relayPopsChanged)
   Q_PROPERTY(int tcpClients READ tcpClients NOTIFY serverChanged)
   Q_PROPERTY(
       int localPort READ localPort WRITE setLocalPort NOTIFY localPortChanged)
@@ -89,6 +91,8 @@ public:
   LobbiesModel *lobbiesModel() { return &lobbiesModel_; }
   MembersModel *membersModel() { return &membersModel_; }
   ChatModel *chatModel() { return &chatModel_; }
+  int relayPing() const { return relayPingMs_; }
+  QVariantList relayPops() const { return relayPops_; }
   QString friendFilter() const { return friendFilter_; }
   bool friendsRefreshing() const { return friendsRefreshing_; }
   int inviteCooldown() const { return inviteCooldownSeconds_; }
@@ -121,6 +125,7 @@ public:
   Q_INVOKABLE void addFriend(const QString &steamId);
   Q_INVOKABLE void copyToClipboard(const QString &text);
   Q_INVOKABLE void sendChatMessage(const QString &text);
+  Q_INVOKABLE void launchSteam(bool useSteamChina);
 
 signals:
   void stateChanged();
@@ -140,6 +145,8 @@ signals:
   void lobbySortModeChanged();
   void adminPrivilegesRequired();
   void tunStartDenied();
+  void relayPingChanged();
+  void relayPopsChanged();
 
 private:
   void tick();
@@ -156,6 +163,7 @@ private:
   void updateFriendCooldown(const QString &steamId, int seconds);
   void updateLobbyInfoSignals();
   void setFriendsRefreshing(bool refreshing);
+  void updateRelayPing();
   void setLobbyRefreshing(bool refreshing);
   void setStatusOverride(const QString &text, int durationMs = 3000);
   void clearStatusOverride();
@@ -215,6 +223,7 @@ private:
   bool friendsRefreshing_ = false;
   bool lobbyRefreshing_ = false;
   std::chrono::steady_clock::time_point lastPingBroadcast_;
+  std::chrono::steady_clock::time_point lastRelayPingSample_;
   ConnectionMode connectionMode_ = ConnectionMode::Tcp;
   bool vpnHosting_ = false;
   bool vpnConnected_ = false;
@@ -222,4 +231,6 @@ private:
   bool vpnStartAttempted_ = false;
   QString tunLocalIp_;
   QString tunDeviceName_;
+  int relayPingMs_ = -1;
+  QVariantList relayPops_;
 };

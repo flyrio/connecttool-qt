@@ -23,6 +23,7 @@ ApplicationWindow {
     property var navItems: [
         { key: "room", title: qsTr("房间"), subtitle: qsTr("主持或加入到房间") },
         { key: "lobby", title: qsTr("大厅"), subtitle: qsTr("浏览房间列表") },
+        { key: "node", title: qsTr("节点"), subtitle: qsTr("中继延迟与切换") },
         { key: "about", title: qsTr("关于"), subtitle: qsTr("关于 ConnectTool") }
     ]
 
@@ -496,7 +497,6 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         spacing: 16
-
                         Frame {
                             id: chatFrame
                             Layout.fillWidth: true
@@ -709,36 +709,45 @@ ApplicationWindow {
 
                             TabBar {
                                 id: sidebarTabBar
-                                background: Rectangle { color: "transparent" }
                                 Layout.fillWidth: true
+                                spacing: 8
+                                background: Rectangle {
+                                    radius: 10
+                                    color: "#0f1725"
+                                    border.color: "#1f2b3c"
+                                }
                                 TabButton {
+                                    id: membersTab
                                     text: qsTr("房间成员")
-                                    width: implicitWidth
                                     contentItem: Label {
-                                        text: parent.text
-                                        font.pixelSize: 15
-                                        color: parent.checked ? "#23c9a9" : "#7f8cab"
+                                        text: membersTab.text
+                                        color: membersTab.checked ? "#7fded1" : "#9bb0d0"
                                         horizontalAlignment: Text.AlignHCenter
                                         verticalAlignment: Text.AlignVCenter
+                                        font.pixelSize: 14
                                     }
                                     background: Rectangle {
-                                        color: parent.checked ? "#162033" : "transparent"
-                                        radius: 6
+                                        radius: 8
+                                        color: membersTab.checked ? "#162033" : "#111827"
+                                        border.color: membersTab.checked ? "#23c9a9" : "#1f2b3c"
+                                        implicitHeight: 40
                                     }
                                 }
                                 TabButton {
-                                    text: qsTr("Steam 好友")
-                                    width: implicitWidth
+                                    id: steamFriendsTab
+                                    text: qsTr("Steam好友")
                                     contentItem: Label {
-                                        text: parent.text
-                                        font.pixelSize: 15
-                                        color: parent.checked ? "#23c9a9" : "#7f8cab"
+                                        text: steamFriendsTab.text
+                                        color: steamFriendsTab.checked ? "#7fded1" : "#9bb0d0"
                                         horizontalAlignment: Text.AlignHCenter
                                         verticalAlignment: Text.AlignVCenter
+                                        font.pixelSize: 14
                                     }
                                     background: Rectangle {
-                                        color: parent.checked ? "#162033" : "transparent"
-                                        radius: 6
+                                        radius: 8
+                                        color: steamFriendsTab.checked ? "#162033" : "#111827"
+                                        border.color: steamFriendsTab.checked ? "#23c9a9" : "#1f2b3c"
+                                        implicitHeight: 40
                                     }
                                 }
                             }
@@ -1275,10 +1284,10 @@ ApplicationWindow {
                                                         Layout.fillWidth: true
                                                         Label {
                                                             text: name.length > 0
-                                                                  ? name
-                                                                  : (hostName.length > 0
-                                                                     ? qsTr("%1 的房间").arg(hostName)
-                                                                     : qsTr("未命名房间"))
+                                                            ? name
+                                                            : (hostName.length > 0
+                                                            ? qsTr("%1 的房间").arg(hostName)
+                                                            : qsTr("未命名房间"))
                                                             font.pixelSize: 16
                                                             color: "#e1edff"
                                                             elide: Text.ElideRight
@@ -1381,6 +1390,229 @@ ApplicationWindow {
         Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            visible: win.currentPage === "node"
+            opacity: visible ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 500; easing.type: Easing.InOutQuad } }
+            id: nodePage
+            property bool isWindows: Qt.platform.os === "windows"
+
+            RowLayout {
+                anchors.fill: parent
+                spacing: 12
+
+                Frame {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.preferredWidth: parent.width * 0.55
+                    padding: 16
+                    Material.elevation: 6
+                    background: Rectangle { radius: 12; color: "#111827"; border.color: "#1f2b3c" }
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 12
+
+                        Label {
+                            text: qsTr("中继节点延迟")
+                            font.pixelSize: 20
+                            color: "#e6efff"
+                        }
+                        Label {
+                            text: qsTr("展示当前 Steam 环境下的中继 POP 往返延迟估计值。")
+                            color: "#8ea4c8"
+                            font.pixelSize: 13
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 140
+                            radius: 12
+                            color: "#162033"
+                            border.color: "#1f2b3c"
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 16
+                                spacing: 8
+
+                                Label {
+                                    text: backend.relayPing >= 0 ? qsTr("%1 ms").arg(backend.relayPing)
+                                    : qsTr("未获取")
+                                    color: backend.relayPing >= 0 ? "#7fded1" : "#7f8cab"
+                                    font.pixelSize: 38
+                                    font.bold: true
+                                }
+
+                                Label {
+                                    text: backend.relayPing >= 0
+                                    ? qsTr("每 2 秒自动刷新，取最优中继的双向往返时延估算。")
+                                    : qsTr("需要 Steam 运行后才能探测中继延迟。")
+                                    color: "#9ab6e3"
+                                    font.pixelSize: 13
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+                        }
+
+                        Label {
+                            text: qsTr("可用中继节点（%1 个）").arg(backend.relayPops.length)
+                            color: "#8ea4c8"
+                            font.pixelSize: 13
+                        }
+
+                        Item {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            Layout.preferredHeight: 280
+
+                            ListView {
+                                id: relayList
+                                anchors.fill: parent
+                                anchors.margins: 6
+                                model: backend.relayPops
+                                clip: true
+                                spacing: 10
+                                ScrollBar.vertical: ScrollBar {}
+
+                                delegate: Rectangle {
+                                    width: relayList.width
+                                    radius: 10
+                                    color: "#162033"
+                                    border.color: "#1f2f45"
+                                    implicitHeight: 64
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 12
+                                        spacing: 10
+
+                                        ColumnLayout {
+                                            spacing: 2
+                                            Layout.fillWidth: true
+                                            Label {
+                                                text: modelData.name
+                                                color: "#e1edff"
+                                                font.pixelSize: 15
+                                                elide: Text.ElideRight
+                                            }
+                                            Label {
+                                                visible: modelData.via !== undefined && modelData.via.length > 0
+                                                text: qsTr("经由 %1").arg(modelData.via)
+                                                color: "#7f8cab"
+                                                font.pixelSize: 12
+                                            }
+                                        }
+
+                                        Item { Layout.fillWidth: true }
+
+                                        ColumnLayout {
+                                            spacing: 2
+                                            Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
+                                            Label {
+                                                text: modelData.ping >= 0 ? qsTr("%1 ms").arg(modelData.ping) : qsTr("-")
+                                                color: modelData.ping < 0 ? "#7f8cab"
+                                                : (modelData.ping <= 100 ? "#2dd6c1"
+                                                : (modelData.ping <= 200 ? "#f9c74f" : "#ef476f"))
+                                                font.pixelSize: 16
+                                            }
+                                            Label {
+                                                text: modelData.ping >= 0 ? qsTr("往返估计") : qsTr("不可达")
+                                                color: "#9ab6e3"
+                                                font.pixelSize: 11
+                                                horizontalAlignment: Text.AlignRight
+                                                Layout.alignment: Qt.AlignRight
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Column {
+                                anchors.centerIn: parent
+                                spacing: 6
+                                visible: relayList.count === 0
+                                Label { text: qsTr("暂无中继节点数据"); color: "#8090b3" }
+                                Label { text: qsTr("等待 Steam 网络初始化或正在探测中…"); color: "#62708f"; font.pixelSize: 12 }
+                            }
+                        }
+                    }
+                }
+
+                Frame {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    // 修复 1: 减小宽度比例 (0.45 -> 0.43)，为中间的 spacing (12px) 留出空间
+                    Layout.preferredWidth: parent.width * 0.43
+                    padding: 16
+                    Material.elevation: 6
+                    background: Rectangle { radius: 12; color: "#111827"; border.color: "#1f2b3c" }
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 12
+
+                        Label {
+                            text: qsTr("Steam 切换")
+                            font.pixelSize: 20
+                            color: "#e6efff"
+                        }
+                        Label {
+                            text: qsTr("仅 Windows 生效：为 Steam.exe 启动添加或移除 \"-steamchina\" 参数。")
+                            color: "#8ea4c8"
+                            font.pixelSize: 13
+                            wrapMode: Text.WordWrap
+                            // 修复 2: 显式设置填满宽度，确保文本能根据面板宽度正确换行
+                            Layout.fillWidth: true
+                        }
+
+                        RowLayout {
+                            id: steamSwitchRow
+                            Layout.fillWidth: true
+                            spacing: 10
+
+                            Button {
+                                text: qsTr("国际版启动")
+                                enabled: nodePage.isWindows
+                                Layout.fillWidth: true
+                                Layout.alignment: Qt.AlignVCenter
+                                onClicked: backend.launchSteam(false)
+                            }
+
+                            Button {
+                                text: qsTr("蒸汽平台 (-steamchina)")
+                                enabled: nodePage.isWindows
+                                Layout.fillWidth: true
+                                Layout.alignment: Qt.AlignVCenter
+                                onClicked: backend.launchSteam(true)
+                            }
+                        }
+
+                        Label {
+                            text: nodePage.isWindows
+                            ? qsTr("如果 Steam 已在运行，将尝试以对应参数重新唤起。")
+                            : qsTr("当前平台不支持自动切换，按钮已禁用。")
+                            color: "#7f8cab"
+                            font.pixelSize: 12
+                            wrapMode: Text.WordWrap
+                            // 修复 3: 底部提示文本也需要宽度约束
+                            Layout.fillWidth: true
+                        }
+
+                        // 修复 4: 添加一个透明填充项，占据底部剩余的空白高度
+                        // 这能保证上方的内容始终靠顶对齐，不会因为高度拉伸而出现奇怪的垂直分布
+                        Item { Layout.fillHeight: true }
+                    }
+                }
+
+            }
+        }
+
+        Item {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
             visible: win.currentPage === "about"
             opacity: visible ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 500; easing.type: Easing.InOutQuad } }
@@ -1477,7 +1709,7 @@ ApplicationWindow {
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: Qt.openUrlExternally("https://qm.qq.com/q/616325806")
+                                onClicked: Qt.openUrlExternally("https://qm.qq.com/q/hgAZJYasbS")
                             }
                         }
                         Rectangle {
@@ -1545,7 +1777,7 @@ ApplicationWindow {
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: Qt.openUrlExternally("https://qm.qq.com/q/902943118")
+                                onClicked: Qt.openUrlExternally("https://qm.qq.com/q/Kx6WpGxlE4")
                             }
                         }
                         ColumnLayout {

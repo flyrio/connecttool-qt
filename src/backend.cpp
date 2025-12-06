@@ -12,13 +12,18 @@
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QGuiApplication>
+#include <QDir>
 #include <QMetaObject>
+#include <QProcess>
 #include <QQmlEngine>
+#include <QSettings>
 #include <QUrl>
+#include <QFileInfo>
 #include <QVariantMap>
 #include <QtDebug>
 #include <algorithm>
 #include <chrono>
+#include <limits>
 #include <isteamnetworkingutils.h>
 #ifdef Q_OS_WIN
 #ifndef NOMINMAX
@@ -111,6 +116,17 @@ void steamWarningHook(int /*severity*/, const char *msg) {
 void steamNetDebugHook(ESteamNetworkingSocketsDebugOutputType /*type*/,
                        const char *msg) {
   qDebug() << "[SteamNet]" << msg;
+}
+
+QString renderPopId(SteamNetworkingPOPID pop) {
+  SteamNetworkingPOPIDRender render(pop);
+  const char *text = render.c_str();
+  if (text && text[0] != '\0') {
+    return QString::fromLatin1(text);
+  }
+  return QStringLiteral("0x%1")
+      .arg(static_cast<uint32_t>(pop), 8, 16, QLatin1Char('0'))
+      .toUpper();
 }
 
 #ifdef Q_OS_LINUX
@@ -1205,6 +1221,66 @@ void Backend::setLobbyRefreshing(bool refreshing) {
   emit lobbyRefreshingChanged();
 }
 
+void Backend::updateRelayPing() {
+  int next = -1;
+  QVariantList popList;
+
+  if (steamReady_ && SteamNetworkingUtils()) {
+    const int popCount = SteamNetworkingUtils()->GetPOPCount();
+    if (popCount > 0) {
+      std::vector<SteamNetworkingPOPID> pops(popCount);
+      const int filled =
+          SteamNetworkingUtils()->GetPOPList(pops.data(), popCount);
+      popList.reserve(std::max(0, filled));
+      for (int i = 0; i < filled; ++i) {
+        SteamNetworkingPOPID via = 0;
+        const int ping = SteamNetworkingUtils()->GetPingToDataCenter(
+            pops[static_cast<size_t>(i)], &via);
+        const int roundTrip = ping >= 0 ? ping * 2 : -1;
+        if (roundTrip >= 0 && (next < 0 || roundTrip < next)) {
+          next = roundTrip;
+        }
+
+        QVariantMap entry;
+        entry.insert(QStringLiteral("name"), renderPopId(pops[static_cast<size_t>(i)]));
+        entry.insert(QStringLiteral("ping"), roundTrip);
+        if (via != 0) {
+          entry.insert(QStringLiteral("via"), renderPopId(via));
+        }
+        popList.push_back(entry);
+      }
+      std::sort(popList.begin(), popList.end(),
+                [](const QVariant &a, const QVariant &b) {
+                  const QVariantMap am = a.toMap();
+                  const QVariantMap bm = b.toMap();
+                  int ap = am.value(QStringLiteral("ping"),
+                                    QVariant(std::numeric_limits<int>::max()))
+                               .toInt();
+                  int bp = bm.value(QStringLiteral("ping"),
+                                    QVariant(std::numeric_limits<int>::max()))
+                               .toInt();
+                  if (ap < 0) {
+                    ap = std::numeric_limits<int>::max();
+                  }
+                  if (bp < 0) {
+                    bp = std::numeric_limits<int>::max();
+                  }
+                  return ap < bp;
+                });
+    }
+  }
+
+  if (next != relayPingMs_) {
+    relayPingMs_ = next;
+    emit relayPingChanged();
+  }
+
+  if (relayPops_ != popList) {
+    relayPops_ = popList;
+    emit relayPopsChanged();
+  }
+}
+
 void Backend::copyToClipboard(const QString &text) {
   if (text.isEmpty()) {
     return;
@@ -1231,6 +1307,59 @@ void Backend::sendChatMessage(const QString &text) {
   if (!roomManager_->sendChatMessage(payload)) {
     qWarning() << tr("消息发送失败。");
   }
+}
+
+void Backend::launchSteam(bool useSteamChina) {
+#ifdef Q_OS_WIN
+  QString steamPath;
+  {
+    QSettings steamReg("HKEY_CURRENT_USER\\Software\\Valve\\Steam",
+                       QSettings::NativeFormat);
+    const QString regPath = steamReg.value(QStringLiteral("SteamPath")).toString();
+    if (!regPath.isEmpty()) {
+      const QString candidate = QDir(regPath).filePath(QStringLiteral("steam.exe"));
+      if (QFileInfo::exists(candidate)) {
+        steamPath = candidate;
+      }
+    }
+  }
+
+  const auto tryProgramDir = [&](const QString &base) {
+    if (!steamPath.isEmpty() || base.isEmpty()) {
+      return;
+    }
+    const QString candidate = QDir(base).filePath(QStringLiteral("Steam/steam.exe"));
+    if (QFileInfo::exists(candidate)) {
+      steamPath = candidate;
+    }
+  };
+
+  tryProgramDir(qEnvironmentVariable("ProgramFiles(x86)"));
+  tryProgramDir(qEnvironmentVariable("ProgramFiles"));
+
+  if (steamPath.isEmpty()) {
+    setStatusOverride(tr("未找到 Steam 安装路径。"), 3000);
+    return;
+  }
+
+  QStringList args;
+  if (useSteamChina) {
+    args << QStringLiteral("-steamchina");
+  }
+  const bool started = QProcess::startDetached(steamPath, args);
+  if (!started) {
+    setStatusOverride(tr("无法启动 Steam。"), 3000);
+    return;
+  }
+
+  setStatusOverride(
+      useSteamChina ? tr("尝试以蒸汽平台启动 Steam…")
+                    : tr("尝试以国际版启动 Steam…"),
+      3000);
+#else
+  Q_UNUSED(useSteamChina);
+  qWarning() << "Steam launch switch is only supported on Windows.";
+#endif
 }
 
 void Backend::handleChatMessage(uint64_t senderId, const QString &message) {
@@ -1265,6 +1394,14 @@ void Backend::handleChatMessage(uint64_t senderId, const QString &message) {
 
 void Backend::tick() {
   if (!steamReady_) {
+    if (relayPingMs_ != -1) {
+      relayPingMs_ = -1;
+      emit relayPingChanged();
+    }
+    if (!relayPops_.isEmpty()) {
+      relayPops_.clear();
+      emit relayPopsChanged();
+    }
     return;
   }
 
@@ -1272,6 +1409,14 @@ void Backend::tick() {
   if (steamManager_) {
     steamManager_->update();
   }
+
+  const auto now = std::chrono::steady_clock::now();
+  if (lastRelayPingSample_.time_since_epoch().count() == 0 ||
+      now - lastRelayPingSample_ > std::chrono::seconds(2)) {
+    updateRelayPing();
+    lastRelayPingSample_ = now;
+  }
+
   if (inTunMode()) {
     ensureVpnRunning();
     syncVpnPeers();
