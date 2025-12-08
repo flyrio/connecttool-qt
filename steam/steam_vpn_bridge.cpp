@@ -1,8 +1,10 @@
 #include "steam_vpn_bridge.h"
 #include "steam_vpn_networking_manager.h"
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <iostream>
+#include <thread>
 #include <steam_api.h>
 
 #ifdef _WIN32
@@ -223,6 +225,10 @@ void SteamVpnBridge::tunReadThread() {
           //           << std::endl;
         }
       }
+    }
+    if (bytesRead <= 0) {
+      // No packet ready; yield briefly to avoid spinning a full core.
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
 
     const auto now = std::chrono::steady_clock::now();
