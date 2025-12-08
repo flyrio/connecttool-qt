@@ -2005,7 +2005,7 @@ void Backend::updateMembersList() {
       entry.ping = steamManager_->getConnectionPing(conn);
       const std::string relayInfo = steamManager_->getConnectionRelayInfo(conn);
       entry.relay =
-          relayInfo.empty() ? tr("直连") : QString::fromStdString(relayInfo);
+          relayInfo.empty() ? tr("P2P") : QString::fromStdString(relayInfo);
       if (entry.ping >= 0) {
         pingBroadcast.emplace_back(remoteValue, entry.ping, relayInfo);
       }

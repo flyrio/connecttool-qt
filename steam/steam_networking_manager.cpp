@@ -356,7 +356,7 @@ SteamNetworkingManager::getConnectionRelayInfo(HSteamNetConnection conn) const {
     if (info.m_nFlags & k_nSteamNetworkConnectionInfoFlags_Relayed) {
       return "中继";
     } else {
-      return "直连";
+      return "P2P";
     }
   }
   return "N/A";
