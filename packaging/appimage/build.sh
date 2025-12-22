@@ -26,9 +26,15 @@ rm -rf "$APPDIR"
 DESTDIR="$APPDIR" cmake --install "$BUILD_DIR"
 
 export QML_SOURCES_PATHS="${QML_SOURCES_PATHS:-$ROOT_DIR/qml}"
+export EXTRA_QT_PLUGINS="${EXTRA_QT_PLUGINS:-platforms/libqwayland-egl.so:platforms/libqwayland-generic.so}"
 
 pushd "$OUTPUT_DIR" >/dev/null
 "$LINUXDEPLOY" --appdir "$APPDIR" --plugin qt --output appimage
 popd >/dev/null
+
+if ! find "$APPDIR" -path "*/plugins/platforms/libqwayland-*.so" | grep -q .; then
+  echo "Wayland platform plugin not packaged. Ensure Qt wayland module is installed." >&2
+  exit 1
+fi
 
 echo "AppImage generated under $OUTPUT_DIR"
