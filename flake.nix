@@ -61,6 +61,7 @@
           default = pkgs.stdenv.mkDerivation rec {
             pname = "connecttool-qt";
             version = "1.5.11";
+            dontWrapQtApps = pkgs.stdenv.isDarwin;
 
             # Keep entire working tree (including untracked) so new sources are present.
             src = ./.;
@@ -103,6 +104,8 @@
             postFixup = pkgs.lib.optionalString pkgs.stdenv.isLinux ''
               patchelf --force-rpath --set-rpath "\$ORIGIN" $out/bin/libsteam_api.so
               wrapProgram $out/bin/connecttool-qt --prefix LD_LIBRARY_PATH : "$out/bin"
+            '' + pkgs.lib.optionalString pkgs.stdenv.isDarwin ''
+              wrapQtApp "$out/connecttool-qt.app/Contents/MacOS/connecttool-qt"
             '';
           };
         }
@@ -127,6 +130,23 @@
               echo "Qt: $(qmake --version | grep -o 'Qt version [0-9.]*' | cut -d ' ' -f 3)"
               ln -sf build/compile_commands.json .
             '';
+          };
+        }
+      );
+      apps = forAllSystems (
+        system:
+        let
+          pkgs = nixpkgsFor.${system};
+          pkg = self.packages.${system}.default;
+        in
+        {
+          default = {
+            type = "app";
+            program =
+              if pkgs.stdenv.isDarwin then
+                "${pkg}/connecttool-qt.app/Contents/MacOS/connecttool-qt"
+              else
+                "${pkg}/bin/connecttool-qt";
           };
         }
       );

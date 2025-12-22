@@ -188,15 +188,43 @@ endif()
 
 # Ensure the Steam redistributable is next to the executable at build and
 # install time, and make sure the loader can find it on macOS.
-add_custom_command(TARGET connecttool-qt POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${STEAMWORKS_RUNTIME_LIBRARIES}
-            $<TARGET_FILE_DIR:connecttool-qt>)
+if(APPLE)
+    set(_steamworks_bundle_frameworks
+        "$<TARGET_BUNDLE_DIR:connecttool-qt>/Contents/Frameworks")
+    set(_steamworks_bundle_binary "$<TARGET_FILE:connecttool-qt>")
+    add_custom_command(TARGET connecttool-qt POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+                "${_steamworks_bundle_frameworks}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${STEAMWORKS_RUNTIME_LIBRARIES}
+                "${_steamworks_bundle_frameworks}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${CMAKE_CURRENT_BINARY_DIR}/steam_appid.txt
+                "$<TARGET_BUNDLE_DIR:connecttool-qt>/Contents/MacOS"
+        COMMAND install_name_tool -id
+                "@loader_path/../Frameworks/libsteam_api.dylib"
+                "${_steamworks_bundle_frameworks}/libsteam_api.dylib"
+        COMMAND install_name_tool -change
+                "@loader_path/libsteam_api.dylib"
+                "@loader_path/../Frameworks/libsteam_api.dylib"
+                "${_steamworks_bundle_binary}")
+    if(STEAMWORKS_WEBRTC_LIBRARY)
+        add_custom_command(TARGET connecttool-qt POST_BUILD
+            COMMAND install_name_tool -id
+                    "@loader_path/../Frameworks/libsteamwebrtc.dylib"
+                    "${_steamworks_bundle_frameworks}/libsteamwebrtc.dylib")
+    endif()
+else()
+    add_custom_command(TARGET connecttool-qt POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${STEAMWORKS_RUNTIME_LIBRARIES}
+                $<TARGET_FILE_DIR:connecttool-qt>)
+endif()
 
 if(APPLE)
     set_target_properties(connecttool-qt PROPERTIES
         BUILD_RPATH "@loader_path"
-        INSTALL_RPATH "@loader_path;@loader_path/../lib")
+        INSTALL_RPATH "@loader_path;@loader_path/../Frameworks;@loader_path/../lib")
 elseif(UNIX AND NOT APPLE)
     # Keep Steam redistributables discoverable when running from build or install tree
     set_target_properties(connecttool-qt PROPERTIES
@@ -223,6 +251,10 @@ qt_add_qml_module(connecttool-qt
 target_compile_definitions(connecttool-qt PRIVATE CONNECTTOOL_VERSION="${CONNECTTOOL_VERSION}")
 
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/steam_appid.txt "480\n")
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/steam_appid.txt DESTINATION bin)
-install(TARGETS connecttool-qt RUNTIME DESTINATION bin)
-install(FILES ${STEAMWORKS_RUNTIME_LIBRARIES} DESTINATION bin OPTIONAL)
+if(APPLE)
+    install(TARGETS connecttool-qt BUNDLE DESTINATION .)
+else()
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/steam_appid.txt DESTINATION bin)
+    install(TARGETS connecttool-qt RUNTIME DESTINATION bin)
+    install(FILES ${STEAMWORKS_RUNTIME_LIBRARIES} DESTINATION bin OPTIONAL)
+endif()

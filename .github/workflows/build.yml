@@ -282,6 +282,45 @@ jobs:
           macdeployqt "build/connecttool-qt.app" \
             -qmldir="${{ github.workspace }}/qml" \
             -verbose=2
+      - name: Bundle Steamworks dylibs (macOS)
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="build/connecttool-qt.app"
+          frameworks_dir="$app/Contents/Frameworks"
+          sdk_dir="${{ github.workspace }}/steamworks/redistributable_bin/osx"
+          if [[ ! -d "$app/Contents" ]]; then
+            echo "::error::Missing app bundle at $app"
+            exit 1
+          fi
+          if [[ ! -f "$sdk_dir/libsteam_api.dylib" ]]; then
+            echo "::error::Missing Steamworks libsteam_api.dylib in $sdk_dir"
+            exit 1
+          fi
+          mkdir -p "$frameworks_dir"
+          cp -f "$sdk_dir/libsteam_api.dylib" "$frameworks_dir/"
+          if [[ -f "$sdk_dir/libsteamwebrtc.dylib" ]]; then
+            cp -f "$sdk_dir/libsteamwebrtc.dylib" "$frameworks_dir/"
+          fi
+          bin="$app/Contents/MacOS/connecttool-qt"
+          if [[ -x "$app/Contents/MacOS/.connecttool-qt-wrapped" ]]; then
+            bin="$app/Contents/MacOS/.connecttool-qt-wrapped"
+          fi
+          fix_deps() {
+            local lib="$1"
+            local lib_path="$frameworks_dir/$lib"
+            if [[ ! -f "$lib_path" ]]; then
+              return
+            fi
+            install_name_tool -id "@loader_path/../Frameworks/$lib" "$lib_path" || true
+            while read -r dep _; do
+              if [[ "$dep" == *"$lib" ]]; then
+                install_name_tool -change "$dep" "@loader_path/../Frameworks/$lib" "$bin" || true
+              fi
+            done < <(otool -L "$bin" | tail -n +2)
+          }
+          fix_deps "libsteam_api.dylib"
+          fix_deps "libsteamwebrtc.dylib"
       - name: Create DMG
         shell: bash
         run: |
