@@ -405,7 +405,7 @@ jobs:
           python3 -m aqt install-qt linux desktop "$QT_VERSION" linux_gcc_64 \
             --autodesktop \
             --outputdir "$QT_DIR" \
-            --modules qt5compat qtshadertools qtwayland qtwaylandcompositor
+            --modules qt5compat qtshadertools qtwaylandcompositor
           QT_ROOT="$QT_DIR/$QT_VERSION/gcc_64"
           if [[ ! -d "$QT_ROOT" ]]; then
             QT_ROOT="$(find "$QT_DIR" -maxdepth 3 -type d -name gcc_64 -print -quit)"
@@ -493,11 +493,13 @@ jobs:
         env:
           QML_SOURCES_PATHS: ${{ github.workspace }}/qml
           EXTRA_QT_MODULES: waylandcompositor
-          EXTRA_PLATFORM_PLUGINS: libqwayland.so
         run: |
           set -euo pipefail
           appdir="${{ github.workspace }}/AppDir"
           linuxdeploy="${{ runner.temp }}/linuxdeploy/linuxdeploy-x86_64.AppImage"
+          if [[ -n "${QT_ROOT:-}" && -f "$QT_ROOT/plugins/platforms/libqwayland.so" ]]; then
+            export EXTRA_PLATFORM_PLUGINS="libqwayland.so"
+          fi
           "$linuxdeploy" --appdir "$appdir" --plugin qt --output appimage \
             --desktop-file "${{ github.workspace }}/resources/connecttool.desktop" \
             --icon-file "${{ github.workspace }}/resources/connecttool-qt.png"
