@@ -393,16 +393,34 @@ jobs:
             libwayland-cursor0 \
             libwayland-server0 \
             libfuse2
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
+      - name: Setup Python (Linux)
+        uses: actions/setup-python@v5
         with:
-          version: "${{ env.QT_VERSION }}"
-          arch: linux_gcc_64
-          modules: qt5compat qtshadertools qtwaylandcompositor
-          archives: qtwayland
-          aqtsource: "git+https://github.com/miurahr/aqtinstall.git"
-          cache-key-prefix: qt6.10.1-linux-v2
-          cache: true
+          python-version: "3.12"
+      - name: Install Qt (Linux)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip
+          python3 -m pip install "aqtinstall @ git+https://github.com/miurahr/aqtinstall.git"
+          QT_DIR="${{ github.workspace }}/Qt"
+          python3 -m aqt install-qt linux desktop "$QT_VERSION" linux_gcc_64 \
+            --autodesktop \
+            --outputdir "$QT_DIR" \
+            --modules qt5compat qtshadertools qtwaylandcompositor \
+            --archives qtwayland
+          QT_ROOT="$QT_DIR/$QT_VERSION/gcc_64"
+          if [[ ! -d "$QT_ROOT" ]]; then
+            QT_ROOT="$(find "$QT_DIR" -maxdepth 3 -type d -name gcc_64 -print -quit)"
+          fi
+          if [[ -z "$QT_ROOT" || ! -d "$QT_ROOT" ]]; then
+            echo "::error::Qt install not found under $QT_DIR"
+            exit 1
+          fi
+          echo "QT_ROOT=$QT_ROOT" >> "$GITHUB_ENV"
+          echo "Qt6_DIR=$QT_ROOT/lib/cmake/Qt6" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=$QT_ROOT" >> "$GITHUB_ENV"
+          echo "$QT_ROOT/bin" >> "$GITHUB_PATH"
       - name: Download Boost headers
         shell: bash
         run: |
@@ -459,6 +477,7 @@ jobs:
           set -euo pipefail
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE="${{ env.BUILD_TYPE }}" \
+            -DCMAKE_PREFIX_PATH="${{ env.CMAKE_PREFIX_PATH }}" \
             -DCMAKE_INSTALL_PREFIX=/usr
       - name: Build (Linux)
         run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
