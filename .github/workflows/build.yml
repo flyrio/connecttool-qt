@@ -497,6 +497,9 @@ jobs:
           set -euo pipefail
           appdir="${{ github.workspace }}/AppDir"
           linuxdeploy="${{ runner.temp }}/linuxdeploy/linuxdeploy-x86_64.AppImage"
+          if [[ -n "${QT_ROOT:-}" ]]; then
+            export LD_LIBRARY_PATH="$QT_ROOT/lib:${LD_LIBRARY_PATH:-}"
+          fi
           if [[ -n "${QT_ROOT:-}" && -f "$QT_ROOT/plugins/platforms/libqwayland.so" ]]; then
             export EXTRA_PLATFORM_PLUGINS="libqwayland.so"
           fi
