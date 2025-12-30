@@ -1,5 +1,6 @@
 #include "backend.h"
 #include "chat_model.h"
+#include "command_log.h"
 #include "lobbies_model.h"
 #include "members_model.h"
 
@@ -30,6 +31,9 @@ int main(int argc, char *argv[]) {
   app.setWindowIcon(QIcon(QStringLiteral(":/qt/qml/ConnectTool/AppIcon.png")));
   QQuickStyle::setStyle(QStringLiteral("Material"));
 
+  CommandLog &cmdLog = CommandLog::instance();
+  CommandLog::install();
+
   qmlRegisterUncreatableType<FriendsModel>("ConnectTool", 1, 0, "FriendsModel",
                                            "Provided by backend");
   qmlRegisterUncreatableType<MembersModel>("ConnectTool", 1, 0, "MembersModel",
@@ -43,6 +47,7 @@ int main(int argc, char *argv[]) {
 
   QQmlApplicationEngine engine;
   engine.rootContext()->setContextProperty(QStringLiteral("backend"), &backend);
+  engine.rootContext()->setContextProperty(QStringLiteral("cmdLog"), &cmdLog);
 
   QObject::connect(
       &engine, &QQmlApplicationEngine::objectCreationFailed, &app,

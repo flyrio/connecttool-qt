@@ -1,8 +1,8 @@
 #ifdef _WIN32
 
 #include "firewall_windows.h"
+#include "command_runner.h"
 
-#include <cstdlib>
 #include <sstream>
 #include <string>
 
@@ -33,7 +33,13 @@ bool ensureTcpFirewallRule(const char *ruleName, int port) {
      << "New-NetFirewallRule -DisplayName '" << escapedName
      << "' -Direction Inbound -Action Allow -Protocol TCP -LocalPort "
      << port << " -Enabled True\"";
-  return ::system(ps.str().c_str()) == 0;
+  const QString script = QString::fromStdString(ps.str());
+  const QStringList args = {QStringLiteral("-NoProfile"),
+                            QStringLiteral("-Command"), script};
+  const command::Result result =
+      command::runHidden(QStringLiteral("powershell"), args);
+  command::logIfNeeded(QStringLiteral("powershell"), args, result);
+  return result.exitCode == 0;
 }
 
 bool ensureTunFirewallRule(const char *ruleName, const char *interfaceAlias) {
@@ -50,7 +56,13 @@ bool ensureTunFirewallRule(const char *ruleName, const char *interfaceAlias) {
      << "New-NetFirewallRule -DisplayName '" << escapedName
      << "' -Direction Inbound -Action Allow -Protocol Any "
      << "-InterfaceAlias '" << escapedAlias << "' -Enabled True\"";
-  return ::system(ps.str().c_str()) == 0;
+  const QString script = QString::fromStdString(ps.str());
+  const QStringList args = {QStringLiteral("-NoProfile"),
+                            QStringLiteral("-Command"), script};
+  const command::Result result =
+      command::runHidden(QStringLiteral("powershell"), args);
+  command::logIfNeeded(QStringLiteral("powershell"), args, result);
+  return result.exitCode == 0;
 }
 
 #endif

@@ -1,6 +1,8 @@
 #ifdef _WIN32
 
 #include "tun_interface.h"
+#include "command_log.h"
+#include "command_runner.h"
 #include "firewall_windows.h"
 
 #ifndef _WIN32_WINNT
@@ -122,7 +124,10 @@ static bool LoadWintun() {
     } else if (Level == WINTUN_LOG_ERR) {
       levelStr = "ERR";
     }
-    std::wcout << L"[WinTUN " << levelStr << L"] " << Message << std::endl;
+    const QString msg = QString::fromWCharArray(Message ? Message : L"");
+    CommandLog::instance().append(
+        QStringLiteral("[WinTUN %1] %2")
+            .arg(QString::fromLatin1(levelStr), msg));
   });
 
   const DWORD version = WintunGetRunningDriverVersion();
@@ -316,20 +321,33 @@ public:
       setError("Adapter IP/index not set for routing");
       return false;
     }
-    std::ostringstream del;
-    del << "route DELETE " << network << " MASK " << netmask
-        << " IF " << adapterIndex_ << " >nul 2>&1";
-    ::system(del.str().c_str());
-    std::ostringstream cmd;
-    cmd << "route ADD " << network << " MASK " << netmask << " "
-        << lastConfiguredIp_ << " IF " << adapterIndex_ << " METRIC 1";
-    if (::system(cmd.str().c_str()) == 0) {
+    const QString networkStr = QString::fromStdString(network);
+    const QString netmaskStr = QString::fromStdString(netmask);
+    const QString ipStr = QString::fromStdString(lastConfiguredIp_);
+    const QString ifIndex = QString::number(adapterIndex_);
+    command::runHidden(
+        QStringLiteral("route"),
+        {QStringLiteral("DELETE"), networkStr, QStringLiteral("MASK"),
+         netmaskStr, QStringLiteral("IF"), ifIndex});
+
+    const QStringList addArgs = {
+        QStringLiteral("ADD"), networkStr, QStringLiteral("MASK"), netmaskStr,
+        ipStr, QStringLiteral("IF"), ifIndex, QStringLiteral("METRIC"),
+        QStringLiteral("1")};
+    const command::Result addResult =
+        command::runHidden(QStringLiteral("route"), addArgs);
+    command::logIfNeeded(QStringLiteral("route"), addArgs, addResult);
+    if (addResult.exitCode == 0) {
       return true;
     }
-    std::ostringstream cmdChange;
-    cmdChange << "route CHANGE " << network << " MASK " << netmask << " "
-              << lastConfiguredIp_ << " IF " << adapterIndex_ << " METRIC 1";
-    if (::system(cmdChange.str().c_str()) == 0) {
+    const QStringList changeArgs = {
+        QStringLiteral("CHANGE"), networkStr, QStringLiteral("MASK"),
+        netmaskStr, ipStr, QStringLiteral("IF"), ifIndex,
+        QStringLiteral("METRIC"), QStringLiteral("1")};
+    const command::Result changeResult =
+        command::runHidden(QStringLiteral("route"), changeArgs);
+    command::logIfNeeded(QStringLiteral("route"), changeArgs, changeResult);
+    if (changeResult.exitCode == 0) {
       return true;
     }
     setError("Failed to add route " + network);
@@ -342,10 +360,17 @@ public:
       return false;
     }
     mtu_ = mtu;
-    std::ostringstream cmd;
-    cmd << "netsh interface ipv4 set subinterface \"" << deviceName_
-        << "\" mtu=" << mtu << " store=persistent";
-    if (::system(cmd.str().c_str()) != 0) {
+    const QStringList args = {QStringLiteral("interface"),
+                              QStringLiteral("ipv4"),
+                              QStringLiteral("set"),
+                              QStringLiteral("subinterface"),
+                              QString::fromStdString(deviceName_),
+                              QStringLiteral("mtu=%1").arg(mtu),
+                              QStringLiteral("store=persistent")};
+    const command::Result result =
+        command::runHidden(QStringLiteral("netsh"), args);
+    command::logIfNeeded(QStringLiteral("netsh"), args, result);
+    if (result.exitCode != 0) {
       setError("Failed to set MTU via netsh");
       return false;
     }
@@ -357,10 +382,16 @@ public:
       setError("Adapter not open");
       return false;
     }
-    std::ostringstream cmd;
-    cmd << "netsh interface set interface \"" << deviceName_ << "\" "
-        << (up ? "enable" : "disable");
-    if (::system(cmd.str().c_str()) != 0) {
+    const QStringList args = {
+        QStringLiteral("interface"),
+        QStringLiteral("set"),
+        QStringLiteral("interface"),
+        QString::fromStdString(deviceName_),
+        up ? QStringLiteral("enable") : QStringLiteral("disable")};
+    const command::Result result =
+        command::runHidden(QStringLiteral("netsh"), args);
+    command::logIfNeeded(QStringLiteral("netsh"), args, result);
+    if (result.exitCode != 0) {
       setError("Failed to change interface state via netsh");
       return false;
     }

@@ -27,6 +27,8 @@ ApplicationWindow {
         { key: "node", title: qsTr("节点"), subtitle: qsTr("中继延迟与切换") },
         { key: "about", title: qsTr("关于"), subtitle: qsTr("关于 ConnectTool") }
     ]
+    property var navItemsTop: navItems.slice(0, 3)
+    property var navItemsBottom: navItems.slice(3)
 
     function syncStartSwitch() {
         if (!startSwitch) {
@@ -157,9 +159,9 @@ ApplicationWindow {
                 font.pixelSize: 18
             }
 
-            Repeater {
-                model: win.navItems
-                delegate: Rectangle {
+            Component {
+                id: navItemDelegate
+                Rectangle {
                     required property string key
                     required property string title
                     required property string subtitle
@@ -217,6 +219,23 @@ ApplicationWindow {
                         }
                     }
                 }
+            }
+
+            Repeater {
+                model: win.navItemsTop
+                delegate: navItemDelegate
+            }
+
+            Repeater {
+                model: [
+                    { key: "cmd", title: qsTr("CMD"), subtitle: qsTr("Command Output") }
+                ]
+                delegate: navItemDelegate
+            }
+
+            Repeater {
+                model: win.navItemsBottom
+                delegate: navItemDelegate
             }
 
             Item { Layout.fillHeight: true }
@@ -1876,6 +1895,75 @@ ApplicationWindow {
                     }
                 }
 
+            }
+        }
+
+        Item {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: win.currentPage === "cmd"
+            opacity: visible ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 500; easing.type: Easing.InOutQuad } }
+
+            Frame {
+                anchors.fill: parent
+                padding: 16
+                Material.elevation: 6
+                background: Rectangle { radius: 12; color: "#111827"; border.color: "#1f2b3c" }
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    spacing: 12
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+
+                        Label {
+                            text: qsTr("CMD Output")
+                            font.pixelSize: 20
+                            color: "#e6efff"
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        Button {
+                            text: qsTr("Copy All")
+                            enabled: cmdLog.text.length > 0
+                            onClicked: backend.copyToClipboard(cmdLog.text)
+                        }
+                    }
+
+                    Label {
+                        text: qsTr("Command and backend output captured at runtime.")
+                        color: "#8ea4c8"
+                        font.pixelSize: 13
+                        wrapMode: Text.WordWrap
+                    }
+
+                    ScrollView {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        background: Rectangle {
+                            color: "transparent"
+                        }
+
+                        TextArea {
+                            readOnly: true
+                            wrapMode: Text.Wrap
+                            text: cmdLog.text
+                            placeholderText: qsTr("No output yet.")
+                            color: "#dce7ff"
+                            selectByMouse: true
+                            background: Rectangle {
+                                color: "#0f1725"
+                                radius: 10
+                                border.color: "#1f2b3c"
+                            }
+                        }
+                    }
+                }
             }
         }
 

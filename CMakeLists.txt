@@ -98,6 +98,8 @@ endif()
 add_executable(connecttool-qt
     src/main.cpp
     src/backend.cpp
+    src/command_log.cpp
+    src/command_runner.cpp
     src/lobbies_model.cpp
     src/friends_model.cpp
     src/chat_model.cpp
@@ -127,6 +129,11 @@ if(APPLE)
 endif()
 
 if(WIN32)
+    set_target_properties(connecttool-qt PROPERTIES WIN32_EXECUTABLE TRUE)
+    target_compile_definitions(connecttool-qt PRIVATE _WIN32_WINNT=0x0601 WINVER=0x0601)
+    if(MSVC)
+        target_compile_options(connecttool-qt PRIVATE /wd4828)
+    endif()
     target_sources(connecttool-qt PRIVATE
         tun/tun_windows.cpp
         src/firewall_windows.cpp
