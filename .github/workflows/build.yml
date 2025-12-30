@@ -553,17 +553,17 @@ jobs:
           tag="${{ inputs.release_tag }}"
           if [[ -z "$tag" ]]; then
             version="$(python3 - <<'PY'
-import re
-from pathlib import Path
+          import re
+          from pathlib import Path
 
-path = Path("CMakeLists.txt")
-data = path.read_text(encoding="utf-8-sig")
-match = re.search(r'set\\(\\s*CONNECTTOOL_VERSION\\s+"([^"]+)"\\s*\\)', data)
-if not match:
-    raise SystemExit(1)
-print(match.group(1))
-PY
-)"
+          path = Path("CMakeLists.txt")
+          data = path.read_text(encoding="utf-8-sig")
+          match = re.search(r'set\\(\\s*CONNECTTOOL_VERSION\\s+"([^"]+)"\\s*\\)', data)
+          if not match:
+              raise SystemExit(1)
+          print(match.group(1))
+          PY
+            )"
             if [[ -z "$version" ]]; then
               echo "::error::CONNECTTOOL_VERSION not found in CMakeLists.txt"
               exit 1
