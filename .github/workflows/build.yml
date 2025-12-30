@@ -62,12 +62,16 @@ jobs:
         run: |
           set -euo pipefail
           SDK_URL="${{ secrets.STEAMWORKS_SDK_URL }}"
-          if [[ -z "$SDK_URL" ]]; then
-            echo "::error::STEAMWORKS_SDK_URL secret not set"
+          LOCAL_SDK_ZIP="third_party/steamworks_sdk_163.zip"
+          rm -rf steamworks steamworks_temp steamworks_sdk.zip
+          if [[ -f "$LOCAL_SDK_ZIP" ]]; then
+            cp "$LOCAL_SDK_ZIP" steamworks_sdk.zip
+          elif [[ -n "$SDK_URL" ]]; then
+            curl -fSLo steamworks_sdk.zip "$SDK_URL"
+          else
+            echo "::error::Steamworks SDK not found. Provide third_party/steamworks_sdk_163.zip or set STEAMWORKS_SDK_URL."
             exit 1
           fi
-          rm -rf steamworks steamworks_temp steamworks_sdk.zip
-          curl -fSLo steamworks_sdk.zip "$SDK_URL"
           unzip -q steamworks_sdk.zip -d steamworks_temp
           mkdir -p steamworks
           if [[ -d "steamworks_temp/sdk" ]]; then
@@ -242,12 +246,16 @@ jobs:
         run: |
           set -euo pipefail
           SDK_URL="${{ secrets.STEAMWORKS_SDK_URL }}"
-          if [[ -z "$SDK_URL" ]]; then
-            echo "::error::STEAMWORKS_SDK_URL secret not set"
+          LOCAL_SDK_ZIP="third_party/steamworks_sdk_163.zip"
+          rm -rf steamworks steamworks_temp steamworks_sdk.zip
+          if [[ -f "$LOCAL_SDK_ZIP" ]]; then
+            cp "$LOCAL_SDK_ZIP" steamworks_sdk.zip
+          elif [[ -n "$SDK_URL" ]]; then
+            curl -fSLo steamworks_sdk.zip "$SDK_URL"
+          else
+            echo "::error::Steamworks SDK not found. Provide third_party/steamworks_sdk_163.zip or set STEAMWORKS_SDK_URL."
             exit 1
           fi
-          rm -rf steamworks steamworks_temp steamworks_sdk.zip
-          curl -fSLo steamworks_sdk.zip "$SDK_URL"
           unzip -q steamworks_sdk.zip -d steamworks_temp
           mkdir -p steamworks
           if [[ -d "steamworks_temp/sdk" ]]; then
@@ -412,12 +420,16 @@ jobs:
         run: |
           set -euo pipefail
           SDK_URL="${{ secrets.STEAMWORKS_SDK_URL }}"
-          if [[ -z "$SDK_URL" ]]; then
-            echo "::error::STEAMWORKS_SDK_URL secret not set"
+          LOCAL_SDK_ZIP="third_party/steamworks_sdk_163.zip"
+          rm -rf steamworks steamworks_temp steamworks_sdk.zip
+          if [[ -f "$LOCAL_SDK_ZIP" ]]; then
+            cp "$LOCAL_SDK_ZIP" steamworks_sdk.zip
+          elif [[ -n "$SDK_URL" ]]; then
+            curl -fSLo steamworks_sdk.zip "$SDK_URL"
+          else
+            echo "::error::Steamworks SDK not found. Provide third_party/steamworks_sdk_163.zip or set STEAMWORKS_SDK_URL."
             exit 1
           fi
-          rm -rf steamworks steamworks_temp steamworks_sdk.zip
-          curl -fSLo steamworks_sdk.zip "$SDK_URL"
           unzip -q steamworks_sdk.zip -d steamworks_temp
           mkdir -p steamworks
           if [[ -d "steamworks_temp/sdk" ]]; then
