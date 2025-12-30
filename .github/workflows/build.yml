@@ -405,7 +405,7 @@ jobs:
           python3 -m aqt install-qt linux desktop "$QT_VERSION" linux_gcc_64 \
             --autodesktop \
             --outputdir "$QT_DIR" \
-            --modules qt5compat qtshadertools qtwaylandcompositor
+            --modules qt5compat qtshadertools qtquickcontrols2 qtwaylandcompositor
           QT_ROOT="$QT_DIR/$QT_VERSION/gcc_64"
           if [[ ! -d "$QT_ROOT" ]]; then
             QT_ROOT="$(find "$QT_DIR" -maxdepth 3 -type d -name gcc_64 -print -quit)"
