@@ -552,24 +552,14 @@ jobs:
           set -euo pipefail
           tag="${{ inputs.release_tag }}"
           if [[ -z "$tag" ]]; then
-            version="$(python3 - <<'PY'
-          import re
-          from pathlib import Path
-
-          path = Path("CMakeLists.txt")
-          data = path.read_text(encoding="utf-8-sig")
-          match = re.search(r'set\\(\\s*CONNECTTOOL_VERSION\\s+"([^"]+)"\\s*\\)', data)
-          if not match:
-              raise SystemExit(1)
-          print(match.group(1))
-          PY
-            )"
+            version="$(python3 -c 'import re, pathlib; data=pathlib.Path("CMakeLists.txt").read_text(encoding="utf-8-sig"); m=re.search(r"set\\(\\s*CONNECTTOOL_VERSION\\s+\"([^\"]+)\"\\s*\\)", data); print(m.group(1) if m else "")' || true)"
             if [[ -z "$version" ]]; then
               echo "::error::CONNECTTOOL_VERSION not found in CMakeLists.txt"
               exit 1
             fi
             tag="v${version}"
           fi
+          echo "Release tag: $tag"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
       - name: Create release archives
         run: |
