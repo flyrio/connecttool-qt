@@ -391,7 +391,7 @@ jobs:
           version: "${{ env.QT_VERSION }}"
           arch: linux_gcc_64
           modules: qt5compat qtshadertools qtwaylandcompositor
-          archieves: qtwayland
+          archives: qtwayland
           aqtsource: "git+https://github.com/miurahr/aqtinstall.git"
           cache: true
       - name: Download Boost headers
