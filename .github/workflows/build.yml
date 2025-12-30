@@ -381,6 +381,7 @@ jobs:
             libxcb-image0 \
             libxcb-keysyms1 \
             libxcb-render-util0 \
+            libxcb-shape0 \
             libxcb-xinerama0 \
             libxcb-xkb1 \
             libxcb-cursor0 \
