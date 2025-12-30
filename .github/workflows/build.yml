@@ -401,6 +401,7 @@ jobs:
           modules: qt5compat qtshadertools qtwaylandcompositor
           archives: qtwayland
           aqtsource: "git+https://github.com/miurahr/aqtinstall.git"
+          cache-key-prefix: qt6.10.1-linux-v2
           cache: true
       - name: Download Boost headers
         shell: bash
