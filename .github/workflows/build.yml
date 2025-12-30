@@ -8,6 +8,15 @@ on:
       - "README.md"
       - ".github/ISSUE_TEMPLATE/**"
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Create GitHub Release"
+        required: false
+        default: "false"
+      release_tag:
+        description: "Release tag (optional, e.g. v1.5.12)"
+        required: false
+        default: ""
 permissions:
   contents: write
 concurrency:
@@ -530,11 +539,27 @@ jobs:
     name: Publish Release
     needs: [build, build-macos, build-appimage]
     runs-on: ubuntu-latest
-    if: github.ref_type == 'tag'
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_release == 'true'
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: dist
+      - name: Determine release tag
+        id: release_tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.release_tag }}"
+          if [[ -z "$tag" ]]; then
+            version="$(sed -n 's/.*set(CONNECTTOOL_VERSION \"\\(.*\\)\").*/\\1/p' CMakeLists.txt | head -n1)"
+            if [[ -z "$version" ]]; then
+              echo "::error::CONNECTTOOL_VERSION not found in CMakeLists.txt"
+              exit 1
+            fi
+            tag="v${version}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
       - name: Create release archives
         run: |
           set -euo pipefail
@@ -556,8 +581,9 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
+          tag_name: ${{ steps.release_tag.outputs.tag }}
+          name: ${{ steps.release_tag.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           files: |
             dist/**/*.zip
             dist/**/*.dmg
